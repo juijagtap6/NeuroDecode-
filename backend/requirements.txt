@@ -1,0 +1,19 @@
+# NeuroDecode Backend Dependencies
+# Pinning verified compatible versions for Python 3.11 and AllenSDK
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.9.0
+httpx>=0.27.0
+requests>=2.32.0
+
+# Scientific & Allen Stack
+numpy==1.23.5
+scipy==1.10.1
+pandas==1.5.3
+scikit-learn==1.7.2
+pynwb==2.8.3
+h5py==3.15.1
+allensdk==2.16.2
+
+# Testing
+pytest>=8.0.0
