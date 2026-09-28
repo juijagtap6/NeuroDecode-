@@ -161,4 +161,131 @@ describe('SimulationView Component', () => {
       expect(screen.getByText(/ODE diverged numerically/i)).toBeDefined();
     });
   });
+
+  it('displays structured validation errors from backend without [object Object]', async () => {
+    // Simulate backend 422 validation failure returning extracted message
+    vi.spyOn(api, 'runSimulation').mockRejectedValueOnce(
+      new Error('params.r_m: Input should be less than or equal to 1000')
+    );
+    render(<SimulationView />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Simulation \/ Validation Alert:/i)).toBeDefined();
+      const alert = screen.getByText(/params\.r_m: Input should be less than or equal to 1000/i);
+      expect(alert).toBeDefined();
+      // MUST NOT contain [object Object]
+      expect(screen.queryByText(/\[object Object\]/i)).toBeNull();
+    });
+  });
+
+  it('runs valid Custom Build configuration and updates visualizations', async () => {
+    render(<SimulationView />);
+    await waitFor(() => expect(api.runSimulation).toHaveBeenCalled());
+
+    // Switch to Custom Build tab
+    const customTab = screen.getByRole('button', { name: /Custom Build/i });
+    fireEvent.click(customTab);
+
+    // Click "Run Custom Simulation"
+    const runBtn = screen.getByRole('button', { name: /Run Custom Simulation/i });
+    fireEvent.click(runBtn);
+
+    await waitFor(() => {
+      expect(api.runSimulation).toHaveBeenCalledTimes(2);
+      expect(screen.getByText(/Population Spike Raster Plot/i)).toBeDefined();
+      expect(screen.getByText(/Membrane Potential Dynamics/i)).toBeDefined();
+    });
+  });
+
+  it('handles BYOD CSV upload and marks provenance as user_uploaded', async () => {
+    const byodResponse: SimulationResponse = {
+      provenance: 'user_uploaded',
+      neuron_ids: [1, 2, 3],
+      spike_events: [
+        { neuron_id: 1, time_ms: 10.5 },
+        { neuron_id: 2, time_ms: 15.0 },
+        { neuron_id: 3, time_ms: 12.0 },
+      ],
+      spikes_by_neuron: { '1': [10.5], '2': [15.0], '3': [12.0] },
+      membrane_potentials: null, // Extracellular has no intracellular trace
+      spike_counts: { '1': 1, '2': 1, '3': 1 },
+      firing_rates: { '1': 10.0, '2': 10.0, '3': 10.0 },
+      isi_statistics: {
+        mean_isi_ms: { '1': 0, '2': 0, '3': 0 },
+        cv_isi: { '1': 0, '2': 0, '3': 0 },
+        population_mean_isi_ms: 0,
+        population_cv_isi: 0,
+      },
+      population_firing_rate: {
+        time_bins_ms: [10],
+        rates_hz: [10],
+        bin_size_ms: 50.0,
+      },
+      summary: {
+        total_neurons: 3,
+        duration_ms: 50.0,
+        total_spikes: 3,
+        mean_firing_rate_hz: 10.0,
+        selected_neuron: 1,
+        provenance: 'user_uploaded',
+      },
+      simulation_parameters: { source_file: 'user_spikes.csv' },
+    };
+
+    vi.spyOn(api, 'uploadSimulationCsv').mockResolvedValueOnce(byodResponse);
+
+    render(<SimulationView />);
+    await waitFor(() => expect(api.runSimulation).toHaveBeenCalled());
+
+    // Switch to BYOD tab
+    const byodTab = screen.getByRole('button', { name: /BYOD \(CSV\)/i });
+    fireEvent.click(byodTab);
+
+    // Simulate file input change
+    const file = new File(['neuron_id,timestamp_ms\n1,10.5\n2,15.0\n3,12.0'], 'spikes.csv', { type: 'text/csv' });
+    const fileInput = screen.getByLabelText(/Upload Spike Train CSV/i, { selector: 'input' }) || document.querySelector('input[type="file"]');
+    if (fileInput) {
+      fireEvent.change(fileInput, { target: { files: [file] } });
+    }
+
+    // Click upload
+    const uploadBtn = screen.getByRole('button', { name: /Upload & Process Dataset/i });
+    fireEvent.click(uploadBtn);
+
+    await waitFor(() => {
+      expect(api.uploadSimulationCsv).toHaveBeenCalled();
+      // Displays the expected message for BYOD mode
+      expect(screen.getByText(/Intracellular Membrane Potential Not Available/i)).toBeDefined();
+    });
+  });
+
+  it('displays user-facing error message when BYOD upload is rejected with non-numeric data', async () => {
+    vi.spyOn(api, 'uploadSimulationCsv').mockRejectedValueOnce(
+      new Error("Row 3 contains non-numeric timestamp_ms='abc'. Spike timestamps must be valid numbers.")
+    );
+
+    render(<SimulationView />);
+    await waitFor(() => expect(api.runSimulation).toHaveBeenCalled());
+
+    // Switch to BYOD
+    const byodTab = screen.getByRole('button', { name: /BYOD \(CSV\)/i });
+    fireEvent.click(byodTab);
+
+    // Set file
+    const file = new File(['bad'], 'bad.csv', { type: 'text/csv' });
+    const fileInput = document.querySelector('input[type="file"]');
+    if (fileInput) {
+      fireEvent.change(fileInput, { target: { files: [file] } });
+    }
+
+    const uploadBtn = screen.getByRole('button', { name: /Upload & Process Dataset/i });
+    fireEvent.click(uploadBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Simulation \/ Validation Alert:/i)).toBeDefined();
+      expect(screen.getByText(/Row 3 contains non-numeric timestamp_ms='abc'/i)).toBeDefined();
+      expect(screen.queryByText(/\[object Object\]/i)).toBeNull();
+    });
+  });
 });
+

@@ -1,17 +1,19 @@
 import React from 'react';
-import { SimulationResponse } from '../../types';
+import { SimulationResponse, MembranePotentialData } from '../../types';
 import { Cpu, ChevronLeft, ChevronRight, Activity, Clock, Zap, Hash } from 'lucide-react';
 
 interface NeuronInspectorProps {
   simulationData: SimulationResponse;
   selectedNeuronId: number;
   onSelectNeuron: (neuronId: number) => void;
+  activeMembraneData?: MembranePotentialData | null;
 }
 
 export const NeuronInspector: React.FC<NeuronInspectorProps> = ({
   simulationData,
   selectedNeuronId,
   onSelectNeuron,
+  activeMembraneData,
 }) => {
   const {
     neuron_ids,
@@ -28,11 +30,12 @@ export const NeuronInspector: React.FC<NeuronInspectorProps> = ({
   const cvIsi = isi_statistics.cv_isi[nidStr] ?? 0.0;
 
   // Peak voltage calculation from membrane trace if available
+  const effectiveMembrane = activeMembraneData !== undefined ? activeMembraneData : membrane_potentials;
   let peakVoltage: number | null = null;
-  const trace = membrane_potentials?.traces?.[nidStr];
+  const trace = effectiveMembrane?.traces?.[nidStr];
   if (trace && trace.length > 0) {
     peakVoltage = Math.round(Math.max(...trace) * 10) / 10;
-  } else if (count > 0 && membrane_potentials) {
+  } else if (count > 0 && effectiveMembrane) {
     // Spiking LIF emits at threshold/peak
     peakVoltage = 20.0;
   }

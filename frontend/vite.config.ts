@@ -7,10 +7,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    pool: 'threads',
-    threads: {
-      singleThread: true,
-    },
+    pool: 'forks',
   },
   server: {
     port: 5173,

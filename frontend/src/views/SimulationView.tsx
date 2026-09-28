@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { api } from '../api/client';
+import { api, extractErrorMessage } from '../api/client';
 import {
   SimulationMode,
   LIFPopulationParams,
@@ -20,6 +20,25 @@ import {
   AlertCircle,
   RefreshCw,
 } from 'lucide-react';
+
+/**
+ * Format any error into a helpful human-readable string.
+ * Prevents [object Object] from ever reaching the user.
+ */
+export function formatErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    if (err.message && err.message !== '[object Object]') {
+      return err.message;
+    }
+  }
+  if (typeof err === 'string' && err !== '[object Object]') {
+    return err;
+  }
+  if (typeof err === 'object' && err !== null) {
+    return extractErrorMessage(err);
+  }
+  return String(err);
+}
 
 interface PresetConfig {
   name: string;
@@ -98,7 +117,7 @@ const PRESETS: PresetConfig[] = [
       v_reset: -65.0,
       r_m: 1.2,
       t_ref: 2.0,
-      i_inj: 10.0,
+      i_inj: 12.5,
       noise: 0.6,
       duration_ms: 500.0,
       dt_ms: 0.1,
@@ -164,7 +183,7 @@ export const SimulationView: React.FC = () => {
         setSelectedNeuronId(response.neuron_ids[0]);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatErrorMessage(err);
       setError(msg);
     } finally {
       setLoading(false);
@@ -236,7 +255,7 @@ export const SimulationView: React.FC = () => {
         setSelectedNeuronId(response.neuron_ids[0]);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatErrorMessage(err);
       setError(msg);
     } finally {
       setLoading(false);
@@ -256,8 +275,9 @@ export const SimulationView: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (err) {
-      setError('Failed to download sample CSV.');
+    } catch (err: unknown) {
+      const msg = formatErrorMessage(err);
+      setError(msg || 'Failed to download sample CSV.');
     }
   };
 
@@ -594,7 +614,7 @@ export const SimulationView: React.FC = () => {
                   <input
                     type="number"
                     min="1"
-                    max="1000"
+                    max="2000"
                     value={params.num_neurons}
                     onChange={(e) => setParams({ ...params, num_neurons: Math.max(1, Number(e.target.value)) })}
                     style={{
@@ -613,7 +633,7 @@ export const SimulationView: React.FC = () => {
                   <input
                     type="number"
                     min="1"
-                    max="100"
+                    max="200"
                     step="0.5"
                     value={params.tau_m}
                     onChange={(e) => setParams({ ...params, tau_m: Math.max(1, Number(e.target.value)) })}
@@ -635,8 +655,8 @@ export const SimulationView: React.FC = () => {
                   <label style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Resting V_rest (mV)</label>
                   <input
                     type="number"
-                    min="-90"
-                    max="-40"
+                    min="-100"
+                    max="0"
                     step="1"
                     value={params.v_rest}
                     onChange={(e) => setParams({ ...params, v_rest: Number(e.target.value) })}
@@ -655,8 +675,8 @@ export const SimulationView: React.FC = () => {
                   <label style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Threshold V_thresh (mV)</label>
                   <input
                     type="number"
-                    min="-70"
-                    max="-30"
+                    min="-80"
+                    max="0"
                     step="1"
                     value={params.v_thresh}
                     onChange={(e) => setParams({ ...params, v_thresh: Number(e.target.value) })}
@@ -678,8 +698,8 @@ export const SimulationView: React.FC = () => {
                   <label style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Reset V_reset (mV)</label>
                   <input
                     type="number"
-                    min="-90"
-                    max="-40"
+                    min="-100"
+                    max="0"
                     step="1"
                     value={params.v_reset}
                     onChange={(e) => setParams({ ...params, v_reset: Number(e.target.value) })}
@@ -698,9 +718,9 @@ export const SimulationView: React.FC = () => {
                   <label style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Resistance R_m (MΩ)</label>
                   <input
                     type="number"
-                    min="0.1"
-                    max="20"
-                    step="0.1"
+                    min="0.01"
+                    max="1000"
+                    step="1"
                     value={params.r_m}
                     onChange={(e) => setParams({ ...params, r_m: Number(e.target.value) })}
                     style={{
@@ -722,7 +742,7 @@ export const SimulationView: React.FC = () => {
                   <input
                     type="number"
                     min="0"
-                    max="20"
+                    max="50"
                     step="0.5"
                     value={params.t_ref}
                     onChange={(e) => setParams({ ...params, t_ref: Number(e.target.value) })}
@@ -741,8 +761,8 @@ export const SimulationView: React.FC = () => {
                   <label style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Input Current (pA)</label>
                   <input
                     type="number"
-                    min="0"
-                    max="100"
+                    min="-100"
+                    max="1000"
                     step="1"
                     value={params.i_inj}
                     onChange={(e) => setParams({ ...params, i_inj: Number(e.target.value) })}
@@ -765,7 +785,7 @@ export const SimulationView: React.FC = () => {
                   <input
                     type="number"
                     min="0"
-                    max="10"
+                    max="20"
                     step="0.1"
                     value={params.noise}
                     onChange={(e) => setParams({ ...params, noise: Number(e.target.value) })}
@@ -807,8 +827,8 @@ export const SimulationView: React.FC = () => {
                   <label style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Duration (ms)</label>
                   <input
                     type="number"
-                    min="50"
-                    max="5000"
+                    min="10"
+                    max="10000"
                     step="50"
                     value={params.duration_ms}
                     onChange={(e) => setParams({ ...params, duration_ms: Number(e.target.value) })}
@@ -827,9 +847,9 @@ export const SimulationView: React.FC = () => {
                   <label style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Timestep dt (ms)</label>
                   <input
                     type="number"
-                    min="0.02"
-                    max="1.0"
-                    step="0.02"
+                    min="0.01"
+                    max="2.0"
+                    step="0.01"
                     value={params.dt_ms}
                     onChange={(e) => setParams({ ...params, dt_ms: Number(e.target.value) })}
                     style={{
@@ -1068,6 +1088,7 @@ export const SimulationView: React.FC = () => {
                 simulationData={simulationData}
                 selectedNeuronId={selectedNeuronId}
                 onSelectNeuron={handleSelectNeuron}
+                activeMembraneData={activeMembraneData}
               />
 
               {/* Membrane Potential Dynamics */}

@@ -523,20 +523,52 @@ class LIFSimulationService:
             time_series = pd.to_numeric(df[found_time_col], errors="coerce")
             neuron_series = pd.to_numeric(df[found_neuron_col], errors="coerce")
 
-            valid_mask = ~(time_series.isna() | neuron_series.isna())
-            if not valid_mask.any():
-                raise ValueError(
-                    f"Columns '{found_neuron_col}' and '{found_time_col}' contain non-numeric data. "
-                    "Neuron IDs and timestamps must be valid numbers."
-                )
+            invalid_time_mask = time_series.isna()
+            invalid_neuron_mask = neuron_series.isna()
 
-            valid_times = time_series[valid_mask].to_numpy()
-            valid_neurons = neuron_series[valid_mask].astype(int).to_numpy()
+            if invalid_time_mask.any() or invalid_neuron_mask.any():
+                bad_idx = (invalid_time_mask | invalid_neuron_mask).idxmax()
+                bad_row = int(bad_idx) + 2  # 1-indexed, accounting for header row
+                bad_n_val = df.loc[bad_idx, found_neuron_col]
+                bad_t_val = df.loc[bad_idx, found_time_col]
 
-            if np.any(valid_times < 0):
-                raise ValueError("Spike timestamps cannot be negative.")
-            if np.any(valid_neurons < 0):
-                raise ValueError("Neuron IDs cannot be negative integers.")
+                if invalid_neuron_mask.loc[bad_idx] and invalid_time_mask.loc[bad_idx]:
+                    raise ValueError(
+                        f"Row {bad_row} contains non-numeric data: "
+                        f"{found_neuron_col}='{bad_n_val}', {found_time_col}='{bad_t_val}'. "
+                        "Neuron IDs and timestamps must be valid numbers."
+                    )
+                elif invalid_neuron_mask.loc[bad_idx]:
+                    raise ValueError(
+                        f"Row {bad_row} contains non-numeric {found_neuron_col}='{bad_n_val}'. "
+                        "Neuron IDs must be valid numeric integers."
+                    )
+                else:
+                    raise ValueError(
+                        f"Row {bad_row} contains non-numeric {found_time_col}='{bad_t_val}'. "
+                        "Spike timestamps must be valid numbers."
+                    )
+
+            if (time_series < 0).any():
+                bad_idx = (time_series < 0).idxmax()
+                bad_row = int(bad_idx) + 2
+                bad_val = df.loc[bad_idx, found_time_col]
+                raise ValueError(f"Row {bad_row} contains negative timestamp ({bad_val}). Spike timestamps cannot be negative.")
+
+            if (neuron_series < 0).any():
+                bad_idx = (neuron_series < 0).idxmax()
+                bad_row = int(bad_idx) + 2
+                bad_val = df.loc[bad_idx, found_neuron_col]
+                raise ValueError(f"Row {bad_row} contains negative neuron ID ({bad_val}). Neuron IDs cannot be negative integers.")
+
+            if ((neuron_series % 1) != 0).any():
+                bad_idx = ((neuron_series % 1) != 0).idxmax()
+                bad_row = int(bad_idx) + 2
+                bad_val = df.loc[bad_idx, found_neuron_col]
+                raise ValueError(f"Row {bad_row} contains non-integer neuron ID ({bad_val}). Neuron IDs must be integer values.")
+
+            valid_times = time_series.to_numpy()
+            valid_neurons = neuron_series.astype(int).to_numpy()
 
             # Detect whether timestamps are in seconds or milliseconds
             max_time = float(np.max(valid_times)) if len(valid_times) > 0 else 0.0
