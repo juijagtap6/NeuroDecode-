@@ -12,6 +12,18 @@ from .comparison import (
     ComparisonResponse,
 )
 
+from .canonical import (
+    SessionMetadata,
+    TrialMetadata,
+    CanonicalNeuralDataset,
+    ExplorerSessionSummary,
+    PCAPoint,
+    PCAResponse,
+    HeatmapResponse,
+    PopulationTraceResponse,
+    UploadResponse,
+)
+
 __all__ = [
     "ProvenanceEnum",
     "HealthResponse",
@@ -29,4 +41,13 @@ __all__ = [
     "PCAResult",
     "ComparisonRequest",
     "ComparisonResponse",
+    "SessionMetadata",
+    "TrialMetadata",
+    "CanonicalNeuralDataset",
+    "ExplorerSessionSummary",
+    "PCAPoint",
+    "PCAResponse",
+    "HeatmapResponse",
+    "PopulationTraceResponse",
+    "UploadResponse",
 ]

@@ -1,13 +1,23 @@
 """API v1 Router definitions with all 4 module routes."""
-from fastapi import APIRouter, HTTPException, Query
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from typing import List, Optional, Union
 from ...schemas.common import HealthResponse, ProvenanceEnum
 from ...schemas.session import SessionSummary, UnitMetadata, StimulusPresentation
+from ...schemas.canonical import (
+    ExplorerSessionSummary,
+    SessionMetadata,
+    TrialMetadata,
+    PCAResponse,
+    HeatmapResponse,
+    PopulationTraceResponse,
+    UploadResponse,
+)
 from ...schemas.decoder import DecoderTrainRequest, DecoderResult
 from ...schemas.simulation import LIFSimConfig, LIFSimResult
 from ...schemas.comparison import ComparisonRequest, ComparisonResponse, FiringStatistics
 from ...services.allen_data_service import allen_data_service
 from ...services.simulation_service import lif_simulation_service
+from ...services.explorer_service import explorer_service
 
 router = APIRouter()
 
@@ -25,19 +35,37 @@ def get_health() -> HealthResponse:
     )
 
 # -------------------------------------------------------------
-# 1. Explorer Module Endpoints
+# 1. Explorer Module Endpoints (/explorer/...)
 # -------------------------------------------------------------
-@router.get("/explorer/sessions", response_model=List[SessionSummary])
+@router.get("/explorer/sessions", response_model=List[ExplorerSessionSummary])
+def list_explorer_sessions() -> List[ExplorerSessionSummary]:
+    """
+    List all available sessions for the Explorer.
+    Includes both official Allen Institute Neuropixels sessions and any active user-uploaded datasets.
+    """
+    return explorer_service.get_available_sessions()
+
 @router.get("/sessions", response_model=List[SessionSummary])
 def list_sessions() -> List[SessionSummary]:
-    """List all available authentic Allen Neuropixels sessions."""
+    """Legacy endpoint: List all available authentic Allen Neuropixels sessions."""
     sessions = allen_data_service.get_available_sessions()
     return sessions
 
-@router.get("/explorer/sessions/{session_id}", response_model=SessionSummary)
+@router.get("/explorer/session/{session_id}", response_model=SessionMetadata)
+@router.get("/explorer/sessions/{session_id}", response_model=SessionMetadata)
+def get_explorer_session(session_id: str) -> SessionMetadata:
+    """Get metadata for a specific session by ID (Allen or uploaded)."""
+    try:
+        return explorer_service.get_session_metadata(session_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found in metadata warehouse: {str(e)}"
+        )
+
 @router.get("/sessions/{session_id}", response_model=SessionSummary)
 def get_session(session_id: int) -> SessionSummary:
-    """Get metadata for a specific session by ID."""
+    """Legacy endpoint: Get metadata for a specific Allen session by ID."""
     summary = allen_data_service.get_session_summary(session_id)
     if not summary:
         raise HTTPException(
@@ -45,6 +73,130 @@ def get_session(session_id: int) -> SessionSummary:
             detail=f"Allen Neuropixels session {session_id} not found in metadata warehouse."
         )
     return summary
+
+@router.get("/explorer/regions", response_model=List[str])
+def get_explorer_regions(
+    session_id: Optional[str] = Query(None, description="Optional session ID filter")
+) -> List[str]:
+    """Get available brain regions/structures (e.g. VISp, VISl, VISam, LP, LGd, CA1)."""
+    return explorer_service.get_available_regions(session_id)
+
+@router.get("/explorer/stimuli", response_model=List[str])
+def get_explorer_stimuli(
+    session_id: Optional[str] = Query(None, description="Optional session ID filter")
+) -> List[str]:
+    """Get available stimulus presentation protocols (e.g. drifting_gratings, natural_scenes, natural_movies)."""
+    return explorer_service.get_available_stimuli(session_id)
+
+@router.get("/explorer/pca", response_model=PCAResponse)
+def get_explorer_pca(
+    session_id: str = Query("715093703", description="Session ID"),
+    stimulus: Optional[str] = Query(None, description="Filter by visual stimulus"),
+    region: Optional[str] = Query(None, description="Filter by brain region acronym"),
+    pc_x: int = Query(1, ge=1, le=10, description="1-indexed PC on X axis (default 1 for PC1)"),
+    pc_y: int = Query(2, ge=1, le=10, description="1-indexed PC on Y axis (default 2 for PC2)"),
+    force_refresh: bool = Query(False, description="Bypass and invalidate cached PCA")
+) -> PCAResponse:
+    """
+    Compute or retrieve cached PCA projection server-side using sklearn.decomposition.PCA.
+    Results are cached under backend/data/cache/pca. If force_refresh=True, cached file is invalidated.
+    """
+    try:
+        return explorer_service.compute_pca(
+            session_id=session_id,
+            stimulus=stimulus,
+            region=region,
+            pc_x=pc_x,
+            pc_y=pc_y,
+            force_refresh=force_refresh
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PCA computation error: {str(e)}")
+
+@router.get("/explorer/heatmap", response_model=HeatmapResponse)
+def get_explorer_heatmap(
+    session_id: str = Query("715093703", description="Session ID"),
+    trial_id: Optional[str] = Query(None, description="Filter by specific trial ID"),
+    region: Optional[str] = Query(None, description="Filter by brain region acronym"),
+    normalize: str = Query("none", description="Normalization method: 'none', 'z-score', or 'min-max'"),
+    max_neurons: int = Query(50, ge=1, le=500, description="Maximum neurons to display"),
+    t_min: Optional[float] = Query(None, description="Window start time in seconds"),
+    t_max: Optional[float] = Query(None, description="Window end time in seconds")
+) -> HeatmapResponse:
+    """
+    Generate population firing-rate heatmap (neurons x time).
+    Supports neuron filtering, region filtering, trial filtering, and normalization.
+    """
+    time_window = [t_min, t_max] if (t_min is not None and t_max is not None) else None
+    try:
+        return explorer_service.compute_heatmap(
+            session_id=session_id,
+            trial_id=trial_id,
+            region=region,
+            normalize=normalize,
+            max_neurons=max_neurons,
+            time_window=time_window
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Heatmap computation error: {str(e)}")
+
+@router.get("/explorer/population-trace", response_model=PopulationTraceResponse)
+def get_explorer_population_trace(
+    session_id: str = Query("715093703", description="Session ID"),
+    trial_id: Optional[str] = Query(None, description="Filter by trial ID"),
+    region: Optional[str] = Query(None, description="Filter by brain region acronym"),
+    stimulus: Optional[str] = Query(None, description="Filter by stimulus protocol"),
+    smoothing_window: int = Query(0, ge=0, le=50, description="Moving average smoothing window size"),
+    averaging_method: str = Query("mean", description="Averaging method: 'mean' or 'median'"),
+    t_min: Optional[float] = Query(None, description="Window start time in seconds"),
+    t_max: Optional[float] = Query(None, description="Window end time in seconds")
+) -> PopulationTraceResponse:
+    """
+    Generate population mean firing-rate trace.
+    Supports smoothing, time window filtering, and averaging method.
+    """
+    time_window = [t_min, t_max] if (t_min is not None and t_max is not None) else None
+    try:
+        return explorer_service.compute_population_trace(
+            session_id=session_id,
+            trial_id=trial_id,
+            region=region,
+            stimulus=stimulus,
+            smoothing_window=smoothing_window,
+            averaging_method=averaging_method,
+            time_window=time_window
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Population trace computation error: {str(e)}")
+
+@router.get("/explorer/trial/{trial_id}", response_model=TrialMetadata)
+def get_explorer_trial(
+    trial_id: str,
+    session_id: Optional[str] = Query(None, description="Session ID")
+) -> TrialMetadata:
+    """Get metadata for a specific visual presentation trial."""
+    try:
+        return explorer_service.get_trial_metadata(trial_id=trial_id, session_id=session_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Trial {trial_id} not found: {str(e)}")
+
+@router.post("/explorer/upload", response_model=UploadResponse)
+async def upload_explorer_dataset(file: UploadFile = File(...)) -> UploadResponse:
+    """
+    Upload a user neural dataset CSV.
+    Required columns: trial_id, time, neuron_id, firing_rate, label.
+    Converts dataset into CanonicalNeuralDataset and stores temporarily in memory only.
+    """
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files (.csv) are supported for dataset upload.")
+
+    try:
+        contents = await file.read()
+        return explorer_service.ingest_csv_upload(contents, file.filename)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload processing failed: {str(e)}")
 
 @router.get("/explorer/sessions/{session_id}/units", response_model=List[UnitMetadata])
 @router.get("/sessions/{session_id}/units", response_model=List[UnitMetadata])

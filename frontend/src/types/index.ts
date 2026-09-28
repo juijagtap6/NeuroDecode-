@@ -3,7 +3,89 @@
  * Strictly mirrored from backend/app/schemas/
  */
 
-export type ProvenanceType = 'allen_experimental' | 'synthetic_lif';
+export type ProvenanceType = 'allen_experimental' | 'synthetic_lif' | 'user_uploaded';
+
+export interface ExplorerSessionSummary {
+  session_id: string | number;
+  mouse_id: string | number | null;
+  genotype: string | null;
+  available_brain_regions: string[];
+  available_stimuli: string[];
+  unit_count: number;
+  total_trials: number;
+  provenance: ProvenanceType;
+  data_status: string;
+}
+
+export interface SessionMetadata {
+  session_id: string | number;
+  mouse_id: string | number | null;
+  genotype: string | null;
+  session_type: string | null;
+  date_of_acquisition: string | null;
+  total_units: number;
+  total_trials: number;
+  duration_sec: number | null;
+  available_brain_regions: string[];
+  available_stimuli: string[];
+  extra: Record<string, unknown>;
+}
+
+export interface PCAPoint {
+  trial_id: string | number;
+  x: number;
+  y: number;
+  label: string;
+  stimulus: string;
+  region: string;
+}
+
+export interface PCAResponse {
+  session_id: string | number;
+  explained_variance_ratio: number[];
+  points: PCAPoint[];
+  pc_x: number;
+  pc_y: number;
+}
+
+export interface HeatmapResponse {
+  neuron_ids: (string | number)[];
+  time_bins: number[];
+  matrix: number[][];
+  trial_id: string | number | null;
+  normalization: string;
+}
+
+export interface PopulationTraceResponse {
+  timestamps: number[];
+  mean_firing_rate: number[];
+  sem_firing_rate?: number[] | null;
+  averaging_method: string;
+  smoothing_window: number;
+}
+
+export interface TrialMetadata {
+  trial_id: string | number;
+  stimulus: string;
+  label: string;
+  start_time: number;
+  stop_time: number;
+  duration: number;
+  region?: string | null;
+  parameters: Record<string, unknown>;
+}
+
+export interface UploadResponse {
+  session_id: string;
+  mouse_id: string;
+  genotype: string;
+  available_brain_regions: string[];
+  available_stimuli: string[];
+  total_units: number;
+  total_trials: number;
+  provenance: ProvenanceType;
+  message: string;
+}
 
 export interface HealthResponse {
   status: string;
