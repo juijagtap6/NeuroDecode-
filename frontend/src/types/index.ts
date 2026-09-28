@@ -3,7 +3,7 @@
  * Strictly mirrored from backend/app/schemas/
  */
 
-export type ProvenanceType = 'allen_experimental' | 'synthetic_lif';
+export type ProvenanceType = 'allen_experimental' | 'synthetic_lif' | 'user_uploaded';
 
 export interface HealthResponse {
   status: string;
@@ -116,6 +116,81 @@ export interface LIFSimResult {
   total_spikes: number;
   mean_firing_rate_hz: number;
   config: LIFSimConfig;
+}
+
+export type SimulationMode = 'quick' | 'custom' | 'byod';
+
+export interface LIFPopulationParams {
+  num_neurons: number;
+  ei_ratio: number;
+  connection_density: number;
+  tau_m: number;
+  v_rest: number;
+  v_thresh: number;
+  v_reset: number;
+  r_m: number;
+  t_ref: number;
+  i_inj: number;
+  noise: number;
+  duration_ms: number;
+  dt_ms: number;
+  random_seed?: number | null;
+  selected_neuron_id?: number;
+}
+
+export interface SimulationRunRequest {
+  mode: SimulationMode;
+  params: LIFPopulationParams;
+}
+
+export interface SpikeEvent {
+  neuron_id: number;
+  time_ms: number;
+}
+
+export interface MembranePotentialData {
+  time_ms: number[];
+  traces: Record<string, number[]>;
+  v_thresh: number;
+  v_reset: number;
+  v_rest: number;
+}
+
+export interface ISIStats {
+  mean_isi_ms: Record<string, number>;
+  cv_isi: Record<string, number>;
+  population_mean_isi_ms: number;
+  population_cv_isi: number;
+}
+
+export interface PopulationFiringRate {
+  time_bins_ms: number[];
+  rates_hz: number[];
+  bin_size_ms: number;
+}
+
+export interface SimulationSummary {
+  total_neurons: number;
+  duration_ms: number;
+  total_spikes: number;
+  mean_firing_rate_hz: number;
+  selected_neuron: number;
+  provenance: ProvenanceType;
+}
+
+export interface SimulationResponse {
+  provenance: ProvenanceType;
+  neuron_ids: number[];
+  spike_events: SpikeEvent[];
+  spikes_by_neuron: Record<string, number[]>;
+  membrane_potentials?: MembranePotentialData | null;
+  spike_counts: Record<string, number>;
+  firing_rates: Record<string, number>;
+  isi_statistics: ISIStats;
+  population_firing_rate: PopulationFiringRate;
+  summary: SimulationSummary;
+  simulation_parameters: Record<string, unknown>;
+  canonical_matrix?: CanonicalSpikeMatrix | null;
 }
 
 export interface FiringStatistics {

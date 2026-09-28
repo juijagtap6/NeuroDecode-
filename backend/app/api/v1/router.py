@@ -1,10 +1,16 @@
 """API v1 Router definitions with all 4 module routes."""
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Response
 from typing import List, Optional
 from ...schemas.common import HealthResponse, ProvenanceEnum
 from ...schemas.session import SessionSummary, UnitMetadata, StimulusPresentation
 from ...schemas.decoder import DecoderTrainRequest, DecoderResult
-from ...schemas.simulation import LIFSimConfig, LIFSimResult
+from ...schemas.simulation import (
+    LIFSimConfig,
+    LIFSimResult,
+    SimulationRunRequest,
+    SimulationResponse,
+    MembranePotentialData,
+)
 from ...schemas.comparison import ComparisonRequest, ComparisonResponse, FiringStatistics
 from ...services.allen_data_service import allen_data_service
 from ...services.simulation_service import lif_simulation_service
@@ -102,10 +108,71 @@ def train_decoder(request: DecoderTrainRequest) -> DecoderResult:
 # -------------------------------------------------------------
 # 3. Simulation Module Endpoints (LIF Only)
 # -------------------------------------------------------------
+@router.post("/simulation/run", response_model=SimulationResponse)
+def run_simulation(request: SimulationRunRequest) -> SimulationResponse:
+    """
+    Run population Leaky Integrate-and-Fire (LIF) numerical simulation.
+    Supports 'quick' and 'custom' modes.
+    Always returns canonical SimulationResponse tagged strictly with provenance: 'synthetic_lif'.
+    """
+    try:
+        response = lif_simulation_service.run_population_simulation(request.params)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Simulation Error: {str(e)}")
+
+@router.post("/simulation/upload", response_model=SimulationResponse)
+async def upload_simulation_dataset(file: UploadFile = File(...)) -> SimulationResponse:
+    """
+    Accept user-uploaded CSV spike train data (Bring Your Own Data).
+    Validates the dataset without fabricating data.
+    Produces the canonical neural representation tagged with provenance: 'user_uploaded'.
+    Uploaded files are processed in memory and discarded.
+    """
+    if not file.filename.lower().endswith((".csv", ".txt")):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file format: '{file.filename}'. Please upload a valid CSV file (.csv)."
+        )
+
+    try:
+        content = await file.read()
+        response = lif_simulation_service.parse_and_validate_csv(content, file.filename)
+        return response
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Upload processing failed: {str(e)}")
+    finally:
+        await file.close()
+
+@router.get("/simulation/trace/{neuron_id}", response_model=MembranePotentialData)
+def get_neuron_membrane_trace(neuron_id: int) -> MembranePotentialData:
+    """
+    Retrieve full membrane potential V(t) trace for a specific neuron from the active simulation.
+    """
+    trace_data = lif_simulation_service.get_neuron_trace(neuron_id)
+    if not trace_data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Neuron {neuron_id} membrane potential trace is not available. Please run a simulation first."
+        )
+    return trace_data
+
+@router.get("/simulation/sample-csv")
+def get_sample_csv():
+    """Download a valid sample spike train CSV for Bring Your Own Data testing."""
+    sample_content = lif_simulation_service.generate_sample_csv()
+    return Response(
+        content=sample_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sample_neural_spikes.csv"}
+    )
+
 @router.post("/simulation/lif", response_model=LIFSimResult)
 def run_lif_simulation(config: LIFSimConfig) -> LIFSimResult:
     """
-    Run biophysical Leaky Integrate-and-Fire (LIF) numerical simulation.
+    Legacy single-neuron biophysical Leaky Integrate-and-Fire (LIF) numerical simulation.
     Always returns results tagged strictly with provenance: 'synthetic_lif'.
     """
     result = lif_simulation_service.run_simulation(config)

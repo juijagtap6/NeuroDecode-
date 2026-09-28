@@ -7,6 +7,7 @@ class ProvenanceEnum(str, Enum):
     """Explicit data origin tag to guarantee experimental vs synthetic separation."""
     ALLEN_EXPERIMENTAL = "allen_experimental"
     SYNTHETIC_LIF = "synthetic_lif"
+    USER_UPLOADED = "user_uploaded"
 
 class HealthResponse(BaseModel):
     """Health check response schema."""

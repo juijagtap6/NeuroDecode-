@@ -8,6 +8,27 @@ interface ProvenanceBadgeProps {
 
 export const ProvenanceBadge: React.FC<ProvenanceBadgeProps> = ({ provenance, showIcon = true }) => {
   const isExperimental = provenance === 'allen_experimental';
+  const isUserUploaded = provenance === 'user_uploaded';
+
+  let borderColor = '#d97706';
+  let bgColor = 'rgba(217, 119, 6, 0.12)';
+  let textColor = '#fbbf24';
+  let label = 'Synthetic (LIF)';
+  let title = 'Synthetic simulation (LIF population model)';
+
+  if (isExperimental) {
+    borderColor = '#059669';
+    bgColor = 'rgba(5, 150, 105, 0.12)';
+    textColor = '#34d399';
+    label = 'Allen Experimental';
+    title = 'Official experimental recording from Allen Institute';
+  } else if (isUserUploaded) {
+    borderColor = '#8b5cf6';
+    bgColor = 'rgba(139, 92, 246, 0.12)';
+    textColor = '#c084fc';
+    label = 'User Uploaded (CSV)';
+    title = 'User-provided spike train dataset';
+  }
 
   const badgeStyle: React.CSSProperties = {
     display: 'inline-flex',
@@ -19,22 +40,22 @@ export const ProvenanceBadge: React.FC<ProvenanceBadgeProps> = ({ provenance, sh
     fontWeight: 600,
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
-    border: isExperimental ? '1px solid #059669' : '1px solid #d97706',
-    backgroundColor: isExperimental ? 'rgba(5, 150, 105, 0.12)' : 'rgba(217, 119, 6, 0.12)',
-    color: isExperimental ? '#34d399' : '#fbbf24',
+    border: `1px solid ${borderColor}`,
+    backgroundColor: bgColor,
+    color: textColor,
   };
 
   const dotStyle: React.CSSProperties = {
     width: '6px',
     height: '6px',
     borderRadius: '50%',
-    backgroundColor: isExperimental ? '#34d399' : '#fbbf24',
+    backgroundColor: textColor,
   };
 
   return (
-    <span style={badgeStyle} title={isExperimental ? 'Official experimental recording from Allen Institute' : 'Synthetic simulation (LIF neuron)'}>
+    <span style={badgeStyle} title={title}>
       {showIcon && <span style={dotStyle} />}
-      {isExperimental ? 'Allen Experimental' : 'Synthetic (LIF)'}
+      {label}
     </span>
   );
 };

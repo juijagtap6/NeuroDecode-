@@ -3,7 +3,19 @@ from .common import ProvenanceEnum, HealthResponse
 from .session import SessionSummary, UnitMetadata, StimulusPresentation
 from .matrix import CanonicalSpikeMatrix
 from .decoder import DecoderTrainRequest, DecoderResult, FeatureImportanceRecord
-from .simulation import LIFSimConfig, LIFSimResult
+from .simulation import (
+    SimulationModeEnum,
+    LIFSimConfig,
+    LIFSimResult,
+    LIFPopulationParams,
+    SimulationRunRequest,
+    SpikeEvent,
+    MembranePotentialData,
+    ISIStats,
+    PopulationFiringRate,
+    SimulationSummary,
+    SimulationResponse,
+)
 from .comparison import (
     FiringStatistics,
     CorrelationAnalysis,
@@ -24,6 +36,15 @@ __all__ = [
     "FeatureImportanceRecord",
     "LIFSimConfig",
     "LIFSimResult",
+    "SimulationModeEnum",
+    "LIFPopulationParams",
+    "SimulationRunRequest",
+    "SpikeEvent",
+    "MembranePotentialData",
+    "ISIStats",
+    "PopulationFiringRate",
+    "SimulationSummary",
+    "SimulationResponse",
     "FiringStatistics",
     "CorrelationAnalysis",
     "PCAResult",
