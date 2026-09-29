@@ -1,8 +1,14 @@
-/**
- * NeuroDecode API Client
- * Centralized HTTP service communicating with the FastAPI backend under /api/v1
- */
-import { HealthResponse, SessionSummary, UnitMetadata, StimulusPresentation } from '../types';
+import {
+  HealthResponse,
+  SessionSummary,
+  UnitMetadata,
+  StimulusPresentation,
+  ComparisonSessionOption,
+  ComparisonBaseRequest,
+  ComparisonOverviewResponse,
+  SessionComparisonResponse,
+  PopulationComparisonResponse,
+} from '../types';
 
 const BASE_URL = '/api/v1';
 
@@ -33,4 +39,47 @@ export const api = {
   },
   getSessionStimuli: (id: number): Promise<StimulusPresentation[]> =>
     request<StimulusPresentation[]>(`/sessions/${id}/stimuli`),
+
+  // Comparison Module Endpoints
+  getComparisonSessions: (): Promise<ComparisonSessionOption[]> =>
+    request<ComparisonSessionOption[]>('/comparison/sessions'),
+
+  compareOverview: (req: ComparisonBaseRequest): Promise<ComparisonOverviewResponse> =>
+    request<ComparisonOverviewResponse>('/comparison/overview', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
+
+  compareSession: (req: ComparisonBaseRequest): Promise<SessionComparisonResponse> =>
+    request<SessionComparisonResponse>('/comparison/session', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
+
+  comparePopulation: (req: ComparisonBaseRequest): Promise<PopulationComparisonResponse> =>
+    request<PopulationComparisonResponse>('/comparison/population', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
+
+  uploadDataset: (payload: Record<string, unknown>): Promise<{ session_id: string; status: string }> =>
+    request<{ session_id: string; status: string }>('/comparison/upload', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  uploadFile: async (file: File): Promise<{ session_id: string; total_units: number; structures: string[]; status: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${BASE_URL}/comparison/upload-file`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Upload Error [${response.status}]: ${errorBody}`);
+    }
+    return response.json();
+  },
 };
+

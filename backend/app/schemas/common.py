@@ -4,9 +4,10 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 
 class ProvenanceEnum(str, Enum):
-    """Explicit data origin tag to guarantee experimental vs synthetic separation."""
+    """Explicit data origin tag to guarantee experimental, synthetic, and user upload separation."""
     ALLEN_EXPERIMENTAL = "allen_experimental"
     SYNTHETIC_LIF = "synthetic_lif"
+    USER_UPLOAD = "user_upload"
 
 class HealthResponse(BaseModel):
     """Health check response schema."""

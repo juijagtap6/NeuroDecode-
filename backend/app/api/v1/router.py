@@ -114,10 +114,92 @@ def run_lif_simulation(config: LIFSimConfig) -> LIFSimResult:
 # -------------------------------------------------------------
 # 4. Comparison Module Endpoints
 # -------------------------------------------------------------
+from ...schemas.comparison import (
+    ComparisonBaseRequest,
+    ComparisonOverviewResponse,
+    SessionComparisonResponse,
+    PopulationComparisonResponse,
+    ComparisonRequest,
+    ComparisonResponse,
+    FiringStatistics,
+)
+from ...services.comparison_service import comparison_service
+
+from fastapi import UploadFile, File
+import json
+
+@router.get("/comparison/sessions")
+def get_comparison_sessions():
+    """List all available recording sessions for comparison selection (Allen & Uploads)."""
+    return comparison_service.get_available_comparison_sessions()
+
+@router.post("/comparison/upload")
+def upload_comparison_dataset(payload: dict):
+    """Upload and validate a custom ecephys dataset JSON for comparison against Allen or other uploads."""
+    try:
+        return comparison_service.save_uploaded_dataset(payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save uploaded dataset: {str(e)}")
+
+@router.post("/comparison/upload-file")
+async def upload_comparison_file(file: UploadFile = File(...)):
+    """Upload and parse a CSV or JSON file containing unit metrics or recordings."""
+    try:
+        content = await file.read()
+        filename = file.filename or "uploaded_dataset"
+        if filename.endswith(".csv"):
+            text = content.decode("utf-8", errors="replace")
+            return comparison_service.save_uploaded_csv(text, filename=filename)
+        elif filename.endswith(".json"):
+            text = content.decode("utf-8", errors="replace")
+            data = json.loads(text)
+            return comparison_service.save_uploaded_dataset(data)
+        else:
+            text = content.decode("utf-8", errors="replace")
+            return comparison_service.save_uploaded_csv(text, filename=filename)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process uploaded file: {str(e)}")
+
+
+
+@router.post("/comparison/overview", response_model=ComparisonOverviewResponse)
+def compare_overview(request: ComparisonBaseRequest) -> ComparisonOverviewResponse:
+    """Generate high-level comparative overview and metrics between Dataset A and Dataset B."""
+    try:
+        return comparison_service.compute_overview(request)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate comparison overview: {str(e)}")
+
+@router.post("/comparison/session", response_model=SessionComparisonResponse)
+def compare_session(request: ComparisonBaseRequest) -> SessionComparisonResponse:
+    """Generate detailed side-by-side session metadata, region distribution, and stimulus comparisons."""
+    try:
+        return comparison_service.compute_session_comparison(request)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate session comparison: {str(e)}")
+
+@router.post("/comparison/population", response_model=PopulationComparisonResponse)
+def compare_population(request: ComparisonBaseRequest) -> PopulationComparisonResponse:
+    """Generate population dynamics comparison including side-by-side PCA, firing distributions, and regional rates."""
+    try:
+        return comparison_service.compute_population_comparison(request)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate population comparison: {str(e)}")
+
 @router.post("/comparison/analyze", response_model=ComparisonResponse)
 def analyze_comparison(request: ComparisonRequest) -> ComparisonResponse:
     """
-    Run Firing Statistics, Correlation, and PCA comparisons between authentic and synthetic data.
+    Legacy comparison endpoint for Firing Statistics, Correlation, and PCA between authentic and synthetic data.
     """
     synthetic_sim = lif_simulation_service.run_simulation(LIFSimConfig())
     synthetic_firing_stats = FiringStatistics(
@@ -132,7 +214,8 @@ def analyze_comparison(request: ComparisonRequest) -> ComparisonResponse:
 
     return ComparisonResponse(
         analysis_type=request.analysis_type,
-        experimental=None,  # Clearly None until authentic session NWB is cached
+        experimental=None,
         synthetic={"firing_stats": synthetic_firing_stats.model_dump()},
-        summary="Comparison foundation ready. Experimental metrics will populate once authentic session NWB is cached locally."
+        summary="Comparison foundation ready. Experimental metrics populate dynamically via the comparison service."
     )
+
