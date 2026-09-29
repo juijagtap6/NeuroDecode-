@@ -10,6 +10,7 @@ class Settings:
     VERSION: str = "0.1.0"
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = os.getenv("NEURODECODE_DEBUG", "True").lower() == "true"
+    BASE_DIR: Path = BASE_DIR
     
     # Allen Institute Cache Path
     ALLEN_CACHE_DIR: Path = Path(os.getenv("ALLEN_CACHE_DIR", str(DEFAULT_CACHE_DIR)))

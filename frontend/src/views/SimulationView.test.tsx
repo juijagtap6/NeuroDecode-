@@ -1,0 +1,381 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { SimulationView } from './SimulationView';
+import { api } from '../api/client';
+import { SimulationResponse } from '../types';
+
+// Mock ResizeObserver for jsdom
+global.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
+// Mock mock simulation response
+const mockSimulationResponse: SimulationResponse = {
+  provenance: 'synthetic_lif',
+  neuron_ids: [0, 1, 2],
+  spike_events: [
+    { neuron_id: 0, time_ms: 25.5 },
+    { neuron_id: 0, time_ms: 75.0 },
+    { neuron_id: 1, time_ms: 40.2 },
+    { neuron_id: 2, time_ms: 60.1 },
+  ],
+  spikes_by_neuron: {
+    '0': [25.5, 75.0],
+    '1': [40.2],
+    '2': [60.1],
+  },
+  membrane_potentials: {
+    time_ms: [0, 10, 20, 25.5, 30, 75, 80],
+    traces: {
+      '0': [-65, -60, -52, 20, -65, 20, -65],
+      '1': [-65, -62, -55, -53, -50, 20, -65],
+    },
+    v_thresh: -50.0,
+    v_reset: -65.0,
+    v_rest: -65.0,
+  },
+  spike_counts: { '0': 2, '1': 1, '2': 1 },
+  firing_rates: { '0': 20.0, '1': 10.0, '2': 10.0 },
+  isi_statistics: {
+    mean_isi_ms: { '0': 49.5, '1': 0.0, '2': 0.0 },
+    cv_isi: { '0': 0.1, '1': 0.0, '2': 0.0 },
+    population_mean_isi_ms: 49.5,
+    population_cv_isi: 0.1,
+  },
+  population_firing_rate: {
+    time_bins_ms: [25, 75],
+    rates_hz: [13.3, 13.3],
+    bin_size_ms: 50.0,
+  },
+  summary: {
+    total_neurons: 3,
+    duration_ms: 100.0,
+    total_spikes: 4,
+    mean_firing_rate_hz: 13.3,
+    selected_neuron: 0,
+    provenance: 'synthetic_lif',
+  },
+  simulation_parameters: {
+    num_neurons: 3,
+    duration_ms: 100.0,
+  },
+};
+
+describe('SimulationView Component', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(api, 'runSimulation').mockResolvedValue(mockSimulationResponse);
+    vi.spyOn(api, 'getNeuronTrace').mockResolvedValue({
+      time_ms: [0, 50, 100],
+      traces: { '1': [-65, -50, -65] },
+      v_thresh: -50,
+      v_reset: -65,
+      v_rest: -65,
+    });
+  });
+
+  it('renders simulation lab header and auto-runs initial simulation', async () => {
+    render(<SimulationView />);
+
+    expect(screen.getByText(/3. Simulation Lab/i)).toBeDefined();
+    await waitFor(() => {
+      expect(api.runSimulation).toHaveBeenCalledTimes(1);
+      expect(screen.getByText(/Population Spike Raster Plot/i)).toBeDefined();
+    });
+  });
+
+  it('allows mode selection between Quick Presets, Custom Build, and BYOD', async () => {
+    render(<SimulationView />);
+    await waitFor(() => expect(api.runSimulation).toHaveBeenCalled());
+
+    // Switch to Custom Build
+    const customTab = screen.getByRole('button', { name: /Custom Build/i });
+    fireEvent.click(customTab);
+    expect(screen.getByText(/Membrane τ_m \(ms\)/i)).toBeDefined();
+
+    // Switch to BYOD
+    const byodTab = screen.getByRole('button', { name: /BYOD \(CSV\)/i });
+    fireEvent.click(byodTab);
+    expect(screen.getByText(/Supported CSV Format/i)).toBeDefined();
+    expect(screen.getByText(/Upload & Process Dataset/i)).toBeDefined();
+  });
+
+  it('allows selecting presets in Quick Mode', async () => {
+    render(<SimulationView />);
+    await waitFor(() => expect(api.runSimulation).toHaveBeenCalled());
+
+    const selects = screen.getAllByRole('combobox');
+    const presetSelect = selects[0];
+    fireEvent.change(presetSelect, { target: { value: '1' } }); // Select Asynchronous Balanced Network
+    expect(screen.getByText(/Asynchronous Balanced Network/i)).toBeDefined();
+  });
+
+  it('renders synchronized Neuron Inspector with actual metrics', async () => {
+    render(<SimulationView />);
+    await waitFor(() => {
+      expect(screen.getByText(/Neuron Inspector/i)).toBeDefined();
+      expect(screen.getByText('20')).toBeDefined(); // Mean Rate 20 Hz
+      expect(screen.getByText(/spikes \/ sec/i)).toBeDefined();
+    });
+  });
+
+  it('updates inspector when another neuron is selected', async () => {
+    render(<SimulationView />);
+    await waitFor(() => expect(screen.getByText(/Neuron Inspector/i)).toBeDefined());
+
+    // Look for neuron selector dropdown in inspector
+    const selects = screen.getAllByRole('combobox');
+    const inspectorSelect = selects[selects.length - 1]; // inspector dropdown
+
+    fireEvent.change(inspectorSelect, { target: { value: '1' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('10')).toBeDefined(); // Neuron 1 has rate 10 Hz
+    });
+  });
+
+  it('renders population firing rate plot', async () => {
+    render(<SimulationView />);
+    await waitFor(() => {
+      expect(screen.getByText(/Population Average Firing Rate Over Time/i)).toBeDefined();
+    });
+  });
+
+  it('renders membrane potential plot with threshold and reset lines', async () => {
+    render(<SimulationView />);
+    await waitFor(() => {
+      expect(screen.getByText(/Membrane Potential Dynamics/i)).toBeDefined();
+      expect(screen.getByText(/V_thresh \(-50 mV\)/i)).toBeDefined();
+      expect(screen.getByText(/V_reset \(-65 mV\)/i)).toBeDefined();
+    });
+  });
+
+  it('displays error banner when simulation fails', async () => {
+    vi.spyOn(api, 'runSimulation').mockRejectedValueOnce(new Error('ODE diverged numerically'));
+    render(<SimulationView />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Simulation \/ Validation Alert:/i)).toBeDefined();
+      expect(screen.getByText(/ODE diverged numerically/i)).toBeDefined();
+    });
+  });
+
+  it('displays structured validation errors from backend without [object Object]', async () => {
+    // Simulate backend 422 validation failure returning extracted message
+    vi.spyOn(api, 'runSimulation').mockRejectedValueOnce(
+      new Error('params.r_m: Input should be less than or equal to 1000')
+    );
+    render(<SimulationView />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Simulation \/ Validation Alert:/i)).toBeDefined();
+      const alert = screen.getByText(/params\.r_m: Input should be less than or equal to 1000/i);
+      expect(alert).toBeDefined();
+      // MUST NOT contain [object Object]
+      expect(screen.queryByText(/\[object Object\]/i)).toBeNull();
+    });
+  });
+
+  it('runs valid Custom Build configuration and updates visualizations', async () => {
+    render(<SimulationView />);
+    await waitFor(() => expect(api.runSimulation).toHaveBeenCalled());
+
+    // Switch to Custom Build tab
+    const customTab = screen.getByRole('button', { name: /Custom Build/i });
+    fireEvent.click(customTab);
+
+    // Click "Run Custom Simulation"
+    const runBtn = screen.getByRole('button', { name: /Run Custom Simulation/i });
+    fireEvent.click(runBtn);
+
+    await waitFor(() => {
+      expect(api.runSimulation).toHaveBeenCalledTimes(2);
+      expect(screen.getByText(/Population Spike Raster Plot/i)).toBeDefined();
+      expect(screen.getByText(/Intracellular Membrane Potential/i)).toBeDefined();
+    });
+  });
+
+  it('handles BYOD spike-only CSV upload and displays Intracellular Membrane Potential Not Available', async () => {
+    const byodResponse: SimulationResponse = {
+      provenance: 'user_uploaded',
+      neuron_ids: [1, 2, 3],
+      spike_events: [
+        { neuron_id: 1, time_ms: 10.5 },
+        { neuron_id: 2, time_ms: 15.0 },
+        { neuron_id: 3, time_ms: 12.0 },
+      ],
+      spikes_by_neuron: { '1': [10.5], '2': [15.0], '3': [12.0] },
+      membrane_potentials: null, // Extracellular has no intracellular trace
+      spike_counts: { '1': 1, '2': 1, '3': 1 },
+      firing_rates: { '1': 10.0, '2': 10.0, '3': 10.0 },
+      isi_statistics: {
+        mean_isi_ms: { '1': 0, '2': 0, '3': 0 },
+        cv_isi: { '1': 0, '2': 0, '3': 0 },
+        population_mean_isi_ms: 0,
+        population_cv_isi: 0,
+      },
+      population_firing_rate: {
+        time_bins_ms: [10],
+        rates_hz: [10],
+        bin_size_ms: 50.0,
+      },
+      summary: {
+        total_neurons: 3,
+        duration_ms: 50.0,
+        total_spikes: 3,
+        mean_firing_rate_hz: 10.0,
+        selected_neuron: 1,
+        provenance: 'user_uploaded',
+      },
+      simulation_parameters: { source_file: 'sample_neural_spikes.csv' },
+    };
+
+    vi.spyOn(api, 'uploadSimulationCsv').mockResolvedValueOnce(byodResponse);
+
+    render(<SimulationView />);
+    await waitFor(() => expect(api.runSimulation).toHaveBeenCalled());
+
+    // Switch to BYOD tab
+    const byodTab = screen.getByRole('button', { name: /BYOD \(CSV\)/i });
+    fireEvent.click(byodTab);
+
+    // Simulate file input change
+    const file = new File(['neuron_id,timestamp_ms\n1,10.5\n2,15.0\n3,12.0'], 'spikes.csv', { type: 'text/csv' });
+    const fileInput = screen.getByLabelText(/Upload Spike Train CSV/i);
+    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // Click upload
+    const uploadBtn = screen.getByRole('button', { name: /Upload & Process Dataset/i });
+    fireEvent.click(uploadBtn);
+
+    await waitFor(() => {
+      expect(api.uploadSimulationCsv).toHaveBeenCalled();
+      // Displays the expected section and Not Available message for spike-only BYOD
+      expect(screen.getAllByText(/Intracellular Membrane Potential/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Intracellular Membrane Potential Not Available/i).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('handles BYOD voltage-containing CSV upload and displays continuous V(t) trace', async () => {
+    const voltageByodResponse: SimulationResponse = {
+      provenance: 'user_uploaded',
+      neuron_ids: [1, 2],
+      spike_events: [{ neuron_id: 1, time_ms: 5.0 }],
+      spikes_by_neuron: { '1': [5.0], '2': [] },
+      membrane_potentials: {
+        time_ms: [0, 1, 2, 3, 4, 5, 6],
+        traces: {
+          '1': [-65.0, -64.2, -62.5, -58.0, -52.0, 20.0, -65.0],
+          '2': [-65.0, -63.8, -60.5, -55.0, -50.5, -65.0, -65.0],
+        },
+        v_thresh: -50.0,
+        v_reset: -65.0,
+        v_rest: -65.0,
+      },
+      spike_counts: { '1': 1, '2': 0 },
+      firing_rates: { '1': 142.8, '2': 0.0 },
+      isi_statistics: {
+        mean_isi_ms: { '1': 0, '2': 0 },
+        cv_isi: { '1': 0, '2': 0 },
+        population_mean_isi_ms: 0,
+        population_cv_isi: 0,
+      },
+      population_firing_rate: {
+        time_bins_ms: [3.5],
+        rates_hz: [142.8],
+        bin_size_ms: 10.0,
+      },
+      summary: {
+        total_neurons: 2,
+        duration_ms: 50.0,
+        total_spikes: 1,
+        mean_firing_rate_hz: 71.4,
+        selected_neuron: 1,
+        provenance: 'user_uploaded',
+      },
+      simulation_parameters: { source_file: 'sample_neural_voltage.csv', format: 'csv_membrane_potential' },
+    };
+
+    vi.spyOn(api, 'uploadSimulationCsv').mockResolvedValueOnce(voltageByodResponse);
+
+    render(<SimulationView />);
+    await waitFor(() => expect(api.runSimulation).toHaveBeenCalled());
+
+    // Switch to BYOD tab
+    const byodTab = screen.getByRole('button', { name: /BYOD \(CSV\)/i });
+    fireEvent.click(byodTab);
+
+    // Provide voltage CSV
+    const file = new File(
+      ['neuron_id,timestamp_ms,membrane_potential_mv\n1,0,-65.0\n1,5,20.0\n'],
+      'sample_neural_voltage.csv',
+      { type: 'text/csv' }
+    );
+    const fileInput = screen.getByLabelText(/Upload Spike Train CSV/i);
+    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // Click upload
+    const uploadBtn = screen.getByRole('button', { name: /Upload & Process Dataset/i });
+    fireEvent.click(uploadBtn);
+
+    await waitFor(() => {
+      expect(api.uploadSimulationCsv).toHaveBeenCalled();
+      // Displays Intracellular Membrane Potential with actual V(t) Dynamics
+      expect(screen.getByText(/Intracellular Membrane Potential Dynamics V\(t\)/i)).toBeDefined();
+      expect(screen.getByText(/Mini Membrane V\(t\) Trace/i)).toBeDefined();
+      // Not Available message must NOT be present
+      expect(screen.queryByText(/Intracellular Membrane Potential Not Available/i)).toBeNull();
+    });
+  });
+
+  it('triggers download for Sample CSV without errors', async () => {
+    vi.spyOn(api, 'getSampleCsv').mockResolvedValueOnce('neuron_id,timestamp_ms\n0,12.4\n');
+
+    render(<SimulationView />);
+    await waitFor(() => expect(api.runSimulation).toHaveBeenCalled());
+
+    // Switch to BYOD
+    const byodTab = screen.getByRole('button', { name: /BYOD \(CSV\)/i });
+    fireEvent.click(byodTab);
+
+    const downloadBtn = screen.getByRole('button', { name: /Sample CSV/i });
+    fireEvent.click(downloadBtn);
+
+    await waitFor(() => {
+      expect(api.getSampleCsv).toHaveBeenCalled();
+    });
+  });
+
+  it('displays user-facing error message when BYOD upload is rejected with non-numeric data', async () => {
+    vi.spyOn(api, 'uploadSimulationCsv').mockRejectedValueOnce(
+      new Error("Row 3 contains non-numeric timestamp_ms='abc'. Spike timestamps must be valid numbers.")
+    );
+
+    render(<SimulationView />);
+    await waitFor(() => expect(api.runSimulation).toHaveBeenCalled());
+
+    // Switch to BYOD
+    const byodTab = screen.getByRole('button', { name: /BYOD \(CSV\)/i });
+    fireEvent.click(byodTab);
+
+    // Set file
+    const file = new File(['bad'], 'bad.csv', { type: 'text/csv' });
+    const fileInput = screen.getByLabelText(/Upload Spike Train CSV/i);
+    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    const uploadBtn = screen.getByRole('button', { name: /Upload & Process Dataset/i });
+    fireEvent.click(uploadBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Simulation \/ Validation Alert:/i)).toBeDefined();
+      expect(screen.getByText(/Row 3 contains non-numeric timestamp_ms='abc'/i)).toBeDefined();
+      expect(screen.queryByText(/\[object Object\]/i)).toBeNull();
+    });
+  });
+});
+
