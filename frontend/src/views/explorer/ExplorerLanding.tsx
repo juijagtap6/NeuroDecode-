@@ -6,10 +6,12 @@ import {
   Activity,
   Layers,
   FileText,
-  CheckCircle,
+  CheckCircle2,
   ArrowRight,
-  BarChart3,
+  Brain,
+  Eye,
   Sliders,
+  Sparkles,
 } from 'lucide-react';
 
 export const ExplorerLanding: React.FC = () => {
@@ -25,6 +27,7 @@ export const ExplorerLanding: React.FC = () => {
     sessions,
     regions,
     stimuli,
+    loadDemoSampleDataset,
   } = useExplorer();
 
   // Summary Metrics
@@ -35,75 +38,85 @@ export const ExplorerLanding: React.FC = () => {
 
   const datasetSourceLabel =
     activeProvenance === 'user_uploaded'
-      ? 'User CSV Ingestion (In-Memory Canonical)'
-      : 'Allen Brain Observatory (Neuropixels)';
+      ? 'Client CSV Ingestion (In-Memory Canonical Neural Dataset)'
+      : 'Allen Brain Observatory (Dual-Probe Neuropixels Visual Coding)';
 
-  const totalNeurons = sessionMetadata?.total_units || currentSession?.unit_count || 120;
+  const totalNeurons = sessionMetadata?.total_units || currentSession?.unit_count || 2714;
   const totalTrials = sessionMetadata?.total_trials || currentSession?.total_trials || 52;
-  const regionCount = regions.length || sessionMetadata?.available_brain_regions?.length || 6;
-  const stimulusCount = stimuli.length || sessionMetadata?.available_stimuli?.length || 3;
+  const regionList = regions.length > 0 ? regions : sessionMetadata?.available_brain_regions || ['VISp', 'VISl', 'VISam', 'LP', 'LGd', 'CA1'];
+  const stimulusList = stimuli.length > 0 ? stimuli : sessionMetadata?.available_stimuli || ['drifting_gratings', 'natural_scenes', 'natural_movies'];
   const recordingDuration = sessionMetadata?.duration_sec
-    ? `${sessionMetadata.duration_sec.toFixed(1)} s`
-    : '130.0 s';
+    ? `${sessionMetadata.duration_sec.toFixed(1)} seconds`
+    : '130.0 seconds';
+  const genotype = sessionMetadata?.genotype || currentSession?.genotype || 'Sst-IRES-Cre/wt;Ai32(RCL-ChR2(H134R)_EYFP)/wt';
+  const mouseId = sessionMetadata?.mouse_id || currentSession?.mouse_id || selectedSessionId;
   const datasetStatus = currentSession?.data_status || 'Ready';
 
-  // Submodule navigation cards
+  // Submodule navigation cards (The 4 defined submodules only)
   const submodules = [
     {
       id: 'dataset-browser' as const,
-      title: '1. Dataset Browser',
+      number: '01',
+      title: 'Dataset Browser',
+      role: 'Ingestion & Session Management',
       description:
-        'Manage and select experimental sessions, switch between Allen Neuropixels and User Upload modes, apply brain region and stimulus filters, and upload custom neural CSV files.',
-      icon: <Database size={24} color="#38bdf8" />,
+        'Manage experimental sessions, switch between Allen Neuropixels and User Upload modes, apply anatomical and stimulus filters, and ingest custom CSV datasets through the validated 6-stage pipeline.',
+      icon: <Database size={22} color="#38bdf8" />,
       accentColor: '#38bdf8',
       buttonText: 'Open Dataset Browser',
     },
     {
       id: 'population-activity' as const,
-      title: '2. Population Activity',
+      number: '02',
+      title: 'Population Activity',
+      role: 'State-Space Trajectories',
       description:
-        'Inspect population-level neural state-space trajectories via interactive PCA projections, and evaluate population mean firing rate dynamics and dispersion metrics.',
-      icon: <Activity size={24} color="#818cf8" />,
+        'Explore dominant population state-space dynamics using interactive PCA projections, monitor multi-component explained variance, and evaluate population mean firing rate dynamics and dispersion metrics.',
+      icon: <Activity size={22} color="#818cf8" />,
       accentColor: '#818cf8',
       buttonText: 'Explore Population Activity',
     },
     {
       id: 'trial-inspector' as const,
-      title: '3. Trial Inspector',
+      number: '03',
+      title: 'Trial Inspector',
+      role: 'Single-Trial Electrophysiology',
       description:
-        'Deep-dive into trial-level electrophysiology with high-resolution firing rate heatmaps (units × time), trial parameter tables, and single-trial activation statistics.',
-      icon: <Layers size={24} color="#34d399" />,
+        'Examine high-resolution firing rate raster heatmaps across units and temporal bins, evaluate single-trial response metrics, inspect stimulus parameters, and step seamlessly across presentation trials.',
+      icon: <Layers size={22} color="#34d399" />,
       accentColor: '#34d399',
       buttonText: 'Inspect Trials',
     },
     {
       id: 'metadata' as const,
-      title: '4. Scientific Metadata',
+      number: '04',
+      title: 'Scientific Metadata',
+      role: 'Anatomical & Schema Authority',
       description:
-        'Authoritative scientific reference center with session provenance, mouse genotype details, recording parameters, anatomical brain structure tables, and schema documentation.',
-      icon: <FileText size={24} color="#c084fc" />,
+        'Authoritative reference center containing deep provenance specifications, specimen genotypes, anatomical target definitions for recorded brain structures, and canonical schema documentation.',
+      icon: <FileText size={22} color="#c084fc" />,
       accentColor: '#c084fc',
       buttonText: 'View Metadata',
     },
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-      {/* 1. Primary Dataset Overview Hero Card */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* 1. Scientific Session Identity Banner */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-          border: '1px solid #334155',
-          borderRadius: '14px',
-          padding: '24px 28px',
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
+          background: 'linear-gradient(135deg, #090e1a 0%, #111a2e 100%)',
+          border: '1px solid #1e293b',
+          borderRadius: '12px',
+          padding: '22px 28px',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-              <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
-                Active Dataset Overview
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.72rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
+                Scientific Session Exploration Environment
               </span>
               <ProvenanceBadge provenance={activeProvenance} />
               <span
@@ -111,8 +124,8 @@ export const ExplorerLanding: React.FC = () => {
                   fontSize: '0.72rem',
                   padding: '2px 8px',
                   borderRadius: '999px',
-                  backgroundColor: 'rgba(34, 197, 94, 0.15)',
-                  border: '1px solid rgba(34, 197, 94, 0.35)',
+                  backgroundColor: 'rgba(34, 197, 94, 0.12)',
+                  border: '1px solid rgba(34, 197, 94, 0.3)',
                   color: '#4ade80',
                   fontWeight: 600,
                   display: 'flex',
@@ -120,14 +133,14 @@ export const ExplorerLanding: React.FC = () => {
                   gap: '4px',
                 }}
               >
-                <CheckCircle size={12} /> {datasetStatus}
+                <CheckCircle2 size={12} /> {datasetStatus}
               </span>
             </div>
             <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.02em' }}>
               {activeDatasetName}
             </h2>
-            <p style={{ margin: '6px 0 0 0', color: '#cbd5e1', fontSize: '0.88rem', maxWidth: '780px' }}>
-              Currently inspecting <strong>Session {selectedSessionId}</strong> ({datasetSourceLabel}) through the unified Canonical Neural Dataset representation.
+            <p style={{ margin: '6px 0 0 0', color: '#94a3b8', fontSize: '0.88rem', maxWidth: '880px', lineHeight: '1.5' }}>
+              Currently exploring <strong style={{ color: '#f1f5f9' }}>Session {selectedSessionId}</strong> ({datasetSourceLabel}) under the unified Canonical Neural Dataset architecture with zero data leakage across modules.
             </p>
           </div>
 
@@ -141,16 +154,16 @@ export const ExplorerLanding: React.FC = () => {
                 gap: '8px',
                 padding: '9px 16px',
                 borderRadius: '8px',
-                backgroundColor: '#3b82f6',
-                border: 'none',
-                color: '#ffffff',
-                fontSize: '0.85rem',
+                backgroundColor: '#1e293b',
+                border: '1px solid #334155',
+                color: '#f8fafc',
+                fontSize: '0.82rem',
                 fontWeight: 600,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
               }}
             >
-              <Sliders size={16} /> Dataset Browser
+              <Sliders size={15} color="#38bdf8" /> Dataset Controls
             </button>
             <button
               onClick={() => setActiveSubmodule('population-activity')}
@@ -160,100 +173,239 @@ export const ExplorerLanding: React.FC = () => {
                 gap: '8px',
                 padding: '9px 16px',
                 borderRadius: '8px',
-                backgroundColor: '#1e293b',
-                border: '1px solid #475569',
-                color: '#f8fafc',
-                fontSize: '0.85rem',
+                backgroundColor: '#3b82f6',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '0.82rem',
                 fontWeight: 600,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
+                boxShadow: '0 2px 8px rgba(59, 130, 246, 0.35)',
               }}
             >
-              <BarChart3 size={16} /> Population Activity
+              <Activity size={15} /> Population Trajectories
             </button>
-          </div>
-        </div>
-
-        {/* 9 Scientific Overview Metrics Grid */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-            gap: '12px',
-            marginTop: '22px',
-            paddingTop: '20px',
-            borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-          }}
-        >
-          {/* 1. Active Dataset */}
-          <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>Active Dataset</span>
-            <strong style={{ fontSize: '0.92rem', color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
-              {activeProvenance === 'user_uploaded' ? 'User Custom' : 'Allen Neuropixels'}
-            </strong>
-          </div>
-
-          {/* 2. Dataset Source */}
-          <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>Dataset Source</span>
-            <strong style={{ fontSize: '0.92rem', color: '#38bdf8' }}>
-              {activeProvenance === 'user_uploaded' ? 'CSV Ingestion' : 'Brain Observatory'}
-            </strong>
-          </div>
-
-          {/* 3. Session ID */}
-          <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>Session ID</span>
-            <strong style={{ fontSize: '0.92rem', color: '#facc15' }}>{selectedSessionId}</strong>
-          </div>
-
-          {/* 4. Total Neurons */}
-          <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>Total Neurons</span>
-            <strong style={{ fontSize: '0.92rem', color: '#34d399' }}>{totalNeurons.toLocaleString()} units</strong>
-          </div>
-
-          {/* 5. Total Trials */}
-          <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>Total Trials</span>
-            <strong style={{ fontSize: '0.92rem', color: '#f8fafc' }}>{totalTrials} trials</strong>
-          </div>
-
-          {/* 6. Brain Region Count */}
-          <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>Brain Regions</span>
-            <strong style={{ fontSize: '0.92rem', color: '#818cf8' }}>{regionCount} structures</strong>
-          </div>
-
-          {/* 7. Available Stimuli */}
-          <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>Visual Stimuli</span>
-            <strong style={{ fontSize: '0.92rem', color: '#f472b6' }}>{stimulusCount} protocols</strong>
-          </div>
-
-          {/* 8. Recording Duration */}
-          <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>Duration</span>
-            <strong style={{ fontSize: '0.92rem', color: '#f8fafc' }}>{recordingDuration}</strong>
-          </div>
-
-          {/* 9. Dataset Status */}
-          <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>Dataset Status</span>
-            <strong style={{ fontSize: '0.92rem', color: '#4ade80' }}>Canonical {datasetStatus}</strong>
           </div>
         </div>
       </div>
 
-      {/* 2. Submodule Exploration Cards Grid (The 4 Defined Submodules) */}
+      {/* 2. Scientific Summary Panels: Active Dataset Summary & Scientific Recording Summary */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(440px, 1fr))', gap: '18px' }}>
+        
+        {/* PANEL A: Active Dataset Summary */}
+        <div
+          style={{
+            backgroundColor: '#0f172a',
+            border: '1px solid #1e293b',
+            borderRadius: '12px',
+            padding: '20px 24px',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid #1e293b', paddingBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Database size={18} color="#38bdf8" />
+                <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 700, color: '#f8fafc' }}>
+                  Active Dataset Summary
+                </h3>
+              </div>
+              <span style={{ fontSize: '0.72rem', color: '#94a3b8', backgroundColor: '#1e293b', padding: '2px 8px', borderRadius: '4px' }}>
+                Identifier: {selectedSessionId}
+              </span>
+            </div>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+              <tbody>
+                <tr style={{ borderBottom: '1px solid #1e293b' }}>
+                  <td style={{ padding: '8px 0', color: '#94a3b8', width: '40%' }}>Dataset Name</td>
+                  <td style={{ padding: '8px 0', textAlign: 'right', color: '#f8fafc', fontWeight: 600 }}>
+                    {activeDatasetName}
+                  </td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #1e293b' }}>
+                  <td style={{ padding: '8px 0', color: '#94a3b8' }}>Dataset Source</td>
+                  <td style={{ padding: '8px 0', textAlign: 'right', color: '#38bdf8', fontWeight: 600 }}>
+                    {activeProvenance === 'user_uploaded' ? 'User Custom Upload' : 'Allen Brain Observatory'}
+                  </td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #1e293b' }}>
+                  <td style={{ padding: '8px 0', color: '#94a3b8' }}>Session ID</td>
+                  <td style={{ padding: '8px 0', textAlign: 'right', color: '#facc15', fontWeight: 600 }}>
+                    {selectedSessionId}
+                  </td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #1e293b' }}>
+                  <td style={{ padding: '8px 0', color: '#94a3b8' }}>Neuron Count</td>
+                  <td style={{ padding: '8px 0', textAlign: 'right', color: '#34d399', fontWeight: 700 }}>
+                    {totalNeurons.toLocaleString()} units
+                  </td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #1e293b' }}>
+                  <td style={{ padding: '8px 0', color: '#94a3b8' }}>Trial Count</td>
+                  <td style={{ padding: '8px 0', textAlign: 'right', color: '#f8fafc', fontWeight: 600 }}>
+                    {totalTrials} presentation trials
+                  </td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #1e293b' }}>
+                  <td style={{ padding: '8px 0', color: '#94a3b8' }}>Brain Region Count</td>
+                  <td style={{ padding: '8px 0', textAlign: 'right', color: '#818cf8', fontWeight: 600 }}>
+                    {regionList.length} recorded structures
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '8px 0', color: '#94a3b8' }}>Stimulus Count</td>
+                  <td style={{ padding: '8px 0', textAlign: 'right', color: '#f472b6', fontWeight: 600 }}>
+                    {stimulusList.length} experimental protocols
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem', color: '#94a3b8' }}>
+            <span>Specimen: <strong style={{ color: '#cbd5e1' }}>{mouseId}</strong></span>
+            <span>Genotype: <strong style={{ color: '#cbd5e1' }}>{genotype.split(';')[0]}</strong></span>
+          </div>
+        </div>
+
+        {/* PANEL B: Scientific Recording Summary & Provenance */}
+        <div
+          style={{
+            backgroundColor: '#0f172a',
+            border: '1px solid #1e293b',
+            borderRadius: '12px',
+            padding: '20px 24px',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid #1e293b', paddingBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Brain size={18} color="#818cf8" />
+                <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 700, color: '#f8fafc' }}>
+                  Scientific Recording Summary & Provenance
+                </h3>
+              </div>
+              <span style={{ fontSize: '0.72rem', color: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.1)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(52, 211, 153, 0.25)' }}>
+                {recordingDuration}
+              </span>
+            </div>
+
+            {/* Recorded Brain Regions Chips */}
+            <div style={{ marginBottom: '14px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                Available Brain Regions ({regionList.length} structures):
+              </span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {regionList.map((reg) => (
+                  <span
+                    key={reg}
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      padding: '3px 8px',
+                      borderRadius: '5px',
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #334155',
+                      color: '#34d399',
+                    }}
+                  >
+                    {reg}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Stimulus Protocols Chips */}
+            <div style={{ marginBottom: '14px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                Available Stimulus Protocols:
+              </span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {stimulusList.map((stim) => (
+                  <span
+                    key={stim}
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      padding: '3px 8px',
+                      borderRadius: '5px',
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #334155',
+                      color: '#818cf8',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <Eye size={12} />
+                    {stim.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Dataset Provenance narrative */}
+            <div
+              style={{
+                backgroundColor: '#090d16',
+                border: '1px solid #1e293b',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                fontSize: '0.78rem',
+                color: '#94a3b8',
+                lineHeight: '1.45',
+              }}
+            >
+              <strong style={{ color: '#e2e8f0', display: 'block', marginBottom: '4px' }}>
+                Electrophysiology Provenance Context:
+              </strong>
+              {activeProvenance === 'allen_experimental'
+                ? 'Dual-probe Neuropixels 1.0 recording in awake behaving mouse visual cortex and thalamic nuclei. Action potentials spike-sorted via Kilosort2 with 50 ms temporal binning and signal-to-noise quality validation.'
+                : 'User-ingested neural electrophysiology CSV dataset mapped into the memory-resident CanonicalNeuralDataset schema. Fully validated across trials, units, and firing rate distributions.'}
+            </div>
+          </div>
+
+          <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => setActiveSubmodule('metadata')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#c084fc',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '4px 0',
+              }}
+            >
+              <span>View Full Metadata & Schema Reference</span>
+              <ArrowRight size={13} />
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      {/* 3. Quick Navigation Cards (The 4 Defined Explorer Submodules) */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#f8fafc' }}>
-              Explorer Submodules
+              Explorer Scientific Workspaces
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
-              Navigate to specialized scientific workspaces for dataset selection, population trajectories, single trials, or reference metadata.
+              Navigate to specialized modules for session management, population state-space trajectories, single-trial rasters, or metadata.
             </p>
           </div>
         </div>
@@ -261,7 +413,7 @@ export const ExplorerLanding: React.FC = () => {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
             gap: '16px',
           }}
         >
@@ -280,6 +432,8 @@ export const ExplorerLanding: React.FC = () => {
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+                position: 'relative',
+                overflow: 'hidden',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = sub.accentColor;
@@ -291,7 +445,7 @@ export const ExplorerLanding: React.FC = () => {
               }}
             >
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                   <div
                     style={{
                       width: '42px',
@@ -306,11 +460,19 @@ export const ExplorerLanding: React.FC = () => {
                   >
                     {sub.icon}
                   </div>
-                  <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
-                    {sub.title}
-                  </h4>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>
+                    {sub.number}
+                  </span>
                 </div>
-                <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8', lineHeight: '1.45' }}>
+
+                <h4 style={{ margin: '0 0 2px 0', fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
+                  {sub.title}
+                </h4>
+                <span style={{ fontSize: '0.74rem', color: sub.accentColor, fontWeight: 600, display: 'block', marginBottom: '8px' }}>
+                  {sub.role}
+                </span>
+
+                <p style={{ margin: 0, fontSize: '0.8rem', color: '#94a3b8', lineHeight: '1.45' }}>
                   {sub.description}
                 </p>
               </div>
@@ -321,22 +483,22 @@ export const ExplorerLanding: React.FC = () => {
                   alignItems: 'center',
                   gap: '6px',
                   color: sub.accentColor,
-                  fontSize: '0.85rem',
+                  fontSize: '0.82rem',
                   fontWeight: 600,
-                  marginTop: '18px',
+                  marginTop: '16px',
                   paddingTop: '12px',
                   borderTop: '1px solid #1e293b',
                 }}
               >
                 <span>{sub.buttonText}</span>
-                <ArrowRight size={15} />
+                <ArrowRight size={14} />
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* 3. Quick Sessions Directory Preview */}
+      {/* 4. Available Exploration Sessions Directory */}
       <div
         style={{
           backgroundColor: '#0f172a',
@@ -346,7 +508,7 @@ export const ExplorerLanding: React.FC = () => {
           boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#f8fafc' }}>
               Available Exploration Sessions ({sessions.length})
@@ -356,45 +518,68 @@ export const ExplorerLanding: React.FC = () => {
             </p>
           </div>
 
-          {/* Quick source filter toggle */}
-          <div
-            style={{
-              display: 'flex',
-              backgroundColor: '#020617',
-              padding: '3px',
-              borderRadius: '7px',
-              border: '1px solid #1e293b',
-            }}
-          >
-            <button
-              onClick={() => setActiveSource('allen')}
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Quick source filter toggle */}
+            <div
               style={{
-                padding: '4px 12px',
-                borderRadius: '5px',
-                border: 'none',
-                backgroundColor: activeSource === 'allen' ? '#1e293b' : 'transparent',
-                color: activeSource === 'allen' ? '#38bdf8' : '#94a3b8',
+                display: 'flex',
+                backgroundColor: '#020617',
+                padding: '3px',
+                borderRadius: '7px',
+                border: '1px solid #1e293b',
+              }}
+            >
+              <button
+                onClick={() => setActiveSource('allen')}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: '5px',
+                  border: 'none',
+                  backgroundColor: activeSource === 'allen' ? '#1e293b' : 'transparent',
+                  color: activeSource === 'allen' ? '#38bdf8' : '#94a3b8',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Allen Datasets
+              </button>
+              <button
+                onClick={() => setActiveSource('upload')}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: '5px',
+                  border: 'none',
+                  backgroundColor: activeSource === 'upload' ? '#1e293b' : 'transparent',
+                  color: activeSource === 'upload' ? '#c084fc' : '#94a3b8',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                User Uploads
+              </button>
+            </div>
+
+            {/* Quick demo CSV action button */}
+            <button
+              onClick={loadDemoSampleDataset}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '5px 12px',
+                borderRadius: '6px',
+                backgroundColor: 'rgba(124, 58, 237, 0.15)',
+                border: '1px solid rgba(124, 58, 237, 0.4)',
+                color: '#c084fc',
                 fontSize: '0.78rem',
                 fontWeight: 600,
                 cursor: 'pointer',
               }}
             >
-              Allen Datasets
-            </button>
-            <button
-              onClick={() => setActiveSource('upload')}
-              style={{
-                padding: '4px 12px',
-                borderRadius: '5px',
-                border: 'none',
-                backgroundColor: activeSource === 'upload' ? '#1e293b' : 'transparent',
-                color: activeSource === 'upload' ? '#c084fc' : '#94a3b8',
-                fontSize: '0.78rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              User Uploads
+              <Sparkles size={13} />
+              Load Demo CSV
             </button>
           </div>
         </div>
@@ -440,7 +625,7 @@ export const ExplorerLanding: React.FC = () => {
                         {s.genotype?.split(';')[0] || 'wildtype'}
                       </td>
                       <td style={{ padding: '10px 12px', color: '#f8fafc', fontWeight: 600 }}>
-                        {s.unit_count}
+                        {s.unit_count.toLocaleString()}
                       </td>
                       <td style={{ padding: '10px 12px', color: '#cbd5e1' }}>
                         {s.total_trials}
@@ -452,7 +637,7 @@ export const ExplorerLanding: React.FC = () => {
                       <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                         {isSelected ? (
                           <span style={{ fontSize: '0.78rem', color: '#38bdf8', fontWeight: 600 }}>
-                            Loaded
+                            ● Active
                           </span>
                         ) : (
                           <button

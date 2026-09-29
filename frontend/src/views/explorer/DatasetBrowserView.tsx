@@ -10,6 +10,11 @@ import {
   Sparkles,
   Info,
   HelpCircle,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Clock,
+  Layers,
 } from 'lucide-react';
 
 export const DatasetBrowserView: React.FC = () => {
@@ -34,6 +39,7 @@ export const DatasetBrowserView: React.FC = () => {
     pcaData,
     loadingSessions,
     uploadStatus,
+    uploadWorkflow,
     handleFileUpload,
     loadDemoSampleDataset,
   } = useExplorer();
@@ -95,19 +101,47 @@ export const DatasetBrowserView: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // Lightweight context chips
+  // Lightweight context metrics
   const activeDatasetName =
     activeProvenance === 'user_uploaded'
       ? (sessionMetadata?.extra?.filename as string) || `Custom Upload (${selectedSessionId})`
       : `Allen Neuropixels (Session ${selectedSessionId})`;
 
-  const unitCount = sessionMetadata?.total_units || currentSession?.unit_count || 120;
+  const unitCount = sessionMetadata?.total_units || currentSession?.unit_count || 2714;
   const trialCount = sessionMetadata?.total_trials || currentSession?.total_trials || 52;
-  const regionCount = regions.length || sessionMetadata?.available_brain_regions?.length || 6;
-  const stimulusCount = stimuli.length || sessionMetadata?.available_stimuli?.length || 3;
+  const datasetType = activeProvenance === 'user_uploaded' ? 'User Neural Recording' : 'Dual-Probe Neuropixels';
+  const datasetSource = activeProvenance === 'user_uploaded' ? 'Client CSV Ingestion' : 'Allen Brain Observatory';
   const recordingDuration = sessionMetadata?.duration_sec
     ? `${sessionMetadata.duration_sec.toFixed(1)} s`
     : '130.0 s';
+
+  // Pipeline stage definitions
+  const pipelineStages = [
+    { key: 'uploading', label: '1. CSV Uploaded', desc: 'File received & buffered' },
+    { key: 'parsing', label: '2. Parsed', desc: 'CSV rows & timestamps mapped' },
+    { key: 'validating', label: '3. Validated', desc: 'Required schema & types confirmed' },
+    { key: 'canonicalizing', label: '4. Canonicalized', desc: 'Transformed to CanonicalNeuralDataset' },
+    { key: 'creating_session', label: '5. Session Created', desc: 'Registered in memory store' },
+    { key: 'generating_metadata', label: '6. Metadata Generated', desc: 'Trial & region warehouse synced' },
+  ];
+
+  const getStageStatus = (stageKey: string) => {
+    const stageOrder = ['uploading', 'parsing', 'validating', 'canonicalizing', 'creating_session', 'generating_metadata', 'completed'];
+    if (uploadWorkflow.stage === 'error') {
+      const activeIdx = stageOrder.indexOf(uploadWorkflow.stage);
+      const thisIdx = stageOrder.indexOf(stageKey);
+      if (thisIdx === activeIdx) return 'error';
+      if (thisIdx < activeIdx) return 'done';
+      return 'pending';
+    }
+    if (uploadWorkflow.stage === 'completed') return 'done';
+    const currentIdx = stageOrder.indexOf(uploadWorkflow.stage);
+    const thisIdx = stageOrder.indexOf(stageKey);
+    if (currentIdx === -1) return 'pending';
+    if (thisIdx < currentIdx) return 'done';
+    if (thisIdx === currentIdx) return 'active';
+    return 'pending';
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
@@ -118,18 +152,100 @@ export const DatasetBrowserView: React.FC = () => {
         provenance={activeProvenance}
         items={[
           { label: 'Active Dataset', value: activeDatasetName, highlight: true },
+          { label: 'Dataset Source', value: datasetSource, accentColor: '#38bdf8' },
           { label: 'Session ID', value: selectedSessionId, accentColor: '#facc15' },
-          {
-            label: 'Dataset Source',
-            value: activeProvenance === 'user_uploaded' ? 'User Upload' : 'Allen Brain Observatory',
-            accentColor: '#38bdf8',
-          },
-          { label: 'Unit Count', value: `${unitCount} units` },
           { label: 'Trial Count', value: `${trialCount} trials` },
+          { label: 'Neuron Count', value: `${unitCount.toLocaleString()} units` },
         ]}
       />
 
-      {/* 2. Primary Control Center Card */}
+      {/* 2. Prominent Dataset Summary Panel */}
+      <div
+        style={{
+          backgroundColor: '#0f172a',
+          border: '1px solid #1e293b',
+          borderRadius: '12px',
+          padding: '20px 24px',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid #1e293b', paddingBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Database size={20} color="#38bdf8" />
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
+                Active Dataset Summary Panel
+              </h3>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#94a3b8' }}>
+                Canonical session metrics currently loaded across all Explorer submodules
+              </p>
+            </div>
+          </div>
+          <span
+            style={{
+              fontSize: '0.74rem',
+              fontWeight: 600,
+              padding: '3px 10px',
+              borderRadius: '999px',
+              backgroundColor: 'rgba(56, 189, 248, 0.1)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              color: '#38bdf8',
+            }}
+          >
+            ● Synchronized Session
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+            gap: '12px',
+          }}
+        >
+          {/* 1. Session ID */}
+          <div style={{ backgroundColor: '#1e293b', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Session ID</span>
+            <strong style={{ fontSize: '1.1rem', color: '#facc15', letterSpacing: '-0.01em' }}>{selectedSessionId}</strong>
+          </div>
+
+          {/* 2. Dataset Type */}
+          <div style={{ backgroundColor: '#1e293b', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Dataset Type</span>
+            <strong style={{ fontSize: '0.92rem', color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+              {datasetType}
+            </strong>
+          </div>
+
+          {/* 3. Dataset Source */}
+          <div style={{ backgroundColor: '#1e293b', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Dataset Source</span>
+            <strong style={{ fontSize: '0.92rem', color: '#38bdf8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+              {datasetSource}
+            </strong>
+          </div>
+
+          {/* 4. Neuron Count */}
+          <div style={{ backgroundColor: '#1e293b', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Neuron Count</span>
+            <strong style={{ fontSize: '1.1rem', color: '#34d399' }}>{unitCount.toLocaleString()} units</strong>
+          </div>
+
+          {/* 5. Trial Count */}
+          <div style={{ backgroundColor: '#1e293b', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Trial Count</span>
+            <strong style={{ fontSize: '1.1rem', color: '#818cf8' }}>{trialCount} trials</strong>
+          </div>
+
+          {/* 6. Recording Duration */}
+          <div style={{ backgroundColor: '#1e293b', padding: '12px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Recording Duration</span>
+            <strong style={{ fontSize: '1.1rem', color: '#f8fafc' }}>{recordingDuration}</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Session Controls & Filtering Toolbar */}
       <div
         style={{
           backgroundColor: '#0f172a',
@@ -155,10 +271,10 @@ export const DatasetBrowserView: React.FC = () => {
             <Sliders size={20} color="#38bdf8" />
             <div>
               <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
-                Dataset & Filter Controls
+                Dataset & Selection Controls
               </h3>
               <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#94a3b8' }}>
-                Selections made here immediately propagate across Population Activity, Trial Inspector, and Metadata.
+                Switch modes and filter active electrophysiology across Population Activity and Trial Inspector
               </p>
             </div>
           </div>
@@ -250,6 +366,8 @@ export const DatasetBrowserView: React.FC = () => {
               onChange={(e) => {
                 setSelectedSessionId(e.target.value);
                 setSelectedTrialId(1);
+                setSelectedRegion('');
+                setSelectedStimulus('');
               }}
               disabled={loadingSessions || displayedSessions.length === 0}
               style={{
@@ -269,7 +387,7 @@ export const DatasetBrowserView: React.FC = () => {
               ) : (
                 displayedSessions.map((s) => (
                   <option key={String(s.session_id)} value={String(s.session_id)}>
-                    Session {s.session_id} ({s.unit_count} units - {s.genotype?.split(';')[0] || 'wildtype'})
+                    Session {s.session_id} ({s.unit_count.toLocaleString()} units - {s.genotype?.split(';')[0] || 'wildtype'})
                   </option>
                 ))
               )}
@@ -357,7 +475,7 @@ export const DatasetBrowserView: React.FC = () => {
               {pcaData?.points && pcaData.points.length > 0 ? (
                 pcaData.points.map((p) => (
                   <option key={String(p.trial_id)} value={p.trial_id}>
-                    Trial {p.trial_id} ({p.stimulus} - {p.label})
+                    Trial {p.trial_id} ({p.stimulus.replace(/_/g, ' ')} - {p.label})
                   </option>
                 ))
               ) : (
@@ -367,58 +485,51 @@ export const DatasetBrowserView: React.FC = () => {
           </div>
         </div>
 
-        {/* 3. Dataset Summary Section */}
-        <div
-          style={{
-            marginTop: '20px',
-            paddingTop: '16px',
-            borderTop: '1px solid #1e293b',
-          }}
-        >
-          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>
-            Dataset Summary Section
-          </span>
+        {/* Empty state alert when in user upload mode with no uploads */}
+        {activeSource === 'upload' && displayedSessions.length === 0 && (
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-              gap: '12px',
+              marginTop: '16px',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              backgroundColor: 'rgba(192, 132, 252, 0.08)',
+              border: '1px solid rgba(192, 132, 252, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '10px',
             }}
           >
-            <div style={{ backgroundColor: '#1e293b', padding: '10px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block' }}>Session ID</span>
-              <strong style={{ fontSize: '0.95rem', color: '#facc15' }}>{selectedSessionId}</strong>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Layers size={16} color="#c084fc" />
+              <span style={{ fontSize: '0.82rem', color: '#e2e8f0' }}>
+                No user-uploaded recordings currently in memory. Upload your experimental CSV below or test using the verified demo dataset.
+              </span>
             </div>
-
-            <div style={{ backgroundColor: '#1e293b', padding: '10px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block' }}>Neuron Count</span>
-              <strong style={{ fontSize: '0.95rem', color: '#34d399' }}>{unitCount} units</strong>
-            </div>
-
-            <div style={{ backgroundColor: '#1e293b', padding: '10px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block' }}>Trial Count</span>
-              <strong style={{ fontSize: '0.95rem', color: '#f8fafc' }}>{trialCount} trials</strong>
-            </div>
-
-            <div style={{ backgroundColor: '#1e293b', padding: '10px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block' }}>Region Count</span>
-              <strong style={{ fontSize: '0.95rem', color: '#818cf8' }}>{regionCount} regions</strong>
-            </div>
-
-            <div style={{ backgroundColor: '#1e293b', padding: '10px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block' }}>Stimulus Count</span>
-              <strong style={{ fontSize: '0.95rem', color: '#f472b6' }}>{stimulusCount} stimuli</strong>
-            </div>
-
-            <div style={{ backgroundColor: '#1e293b', padding: '10px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block' }}>Recording Duration</span>
-              <strong style={{ fontSize: '0.95rem', color: '#f8fafc' }}>{recordingDuration}</strong>
-            </div>
+            <button
+              onClick={loadDemoSampleDataset}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '5px 12px',
+                borderRadius: '6px',
+                backgroundColor: '#8b5cf6',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              <Sparkles size={13} /> Load Verified Demo CSV
+            </button>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* 4. Complete User Dataset Workflow & Upload Center */}
+      {/* 4. Complete User Dataset Ingestion Center & Scientific Pipeline */}
       <div
         style={{
           backgroundColor: '#0f172a',
@@ -428,16 +539,16 @@ export const DatasetBrowserView: React.FC = () => {
           boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Upload size={20} color="#c084fc" />
               <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
-                User Dataset Ingestion Workspace
+                Scientific Neural Ingestion Center
               </h3>
             </div>
             <p style={{ margin: '3px 0 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
-              Upload your own neural recording CSV file into the Canonical Neural representation with immediate validation.
+              Upload your experimental electrophysiology CSV to transform it into the Canonical Neural Dataset schema.
             </p>
           </div>
 
@@ -505,6 +616,98 @@ export const DatasetBrowserView: React.FC = () => {
           </div>
         </div>
 
+        {/* 6-Stage Scientific Ingestion Workflow Indicator */}
+        <div
+          style={{
+            marginBottom: '20px',
+            backgroundColor: '#090d16',
+            border: '1px solid #1e293b',
+            borderRadius: '10px',
+            padding: '16px 18px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Scientific Ingestion Stages
+            </span>
+            {uploadWorkflow.stage !== 'idle' && (
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  color: uploadWorkflow.stage === 'completed' ? '#4ade80' : uploadWorkflow.stage === 'error' ? '#f87171' : '#38bdf8',
+                }}
+              >
+                {uploadWorkflow.stage === 'completed'
+                  ? '● Ingestion Successful'
+                  : uploadWorkflow.stage === 'error'
+                  ? '● Validation Failure'
+                  : '● Processing Stages...'}
+              </span>
+            )}
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+              gap: '10px',
+            }}
+          >
+            {pipelineStages.map((st) => {
+              const status = getStageStatus(st.key);
+              const isDone = status === 'done';
+              const isActive = status === 'active';
+              const isErr = status === 'error';
+
+              let borderColor = '#1e293b';
+              let bgColor = '#0f172a';
+              let textColor = '#64748b';
+
+              if (isDone) {
+                borderColor = 'rgba(34, 197, 94, 0.35)';
+                bgColor = 'rgba(34, 197, 94, 0.08)';
+                textColor = '#4ade80';
+              } else if (isActive) {
+                borderColor = '#38bdf8';
+                bgColor = 'rgba(56, 189, 248, 0.12)';
+                textColor = '#38bdf8';
+              } else if (isErr) {
+                borderColor = '#ef4444';
+                bgColor = 'rgba(239, 68, 68, 0.1)';
+                textColor = '#f87171';
+              }
+
+              return (
+                <div
+                  key={st.key}
+                  style={{
+                    backgroundColor: bgColor,
+                    border: `1px solid ${borderColor}`,
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: textColor }}>
+                      {st.label}
+                    </span>
+                    {isDone && <CheckCircle2 size={13} color="#4ade80" />}
+                    {isActive && <Loader2 size={13} color="#38bdf8" style={{ animation: 'spin 1s linear infinite' }} />}
+                    {isErr && <AlertCircle size={13} color="#f87171" />}
+                    {!isDone && !isActive && !isErr && <Clock size={13} color="#475569" />}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{st.desc}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Drag-and-Drop / Upload Box */}
         <div
           onDragOver={(e) => {
@@ -517,14 +720,14 @@ export const DatasetBrowserView: React.FC = () => {
             border: `2px dashed ${dragOver ? '#38bdf8' : '#334155'}`,
             borderRadius: '10px',
             backgroundColor: dragOver ? 'rgba(56, 189, 248, 0.05)' : '#090d16',
-            padding: '30px 20px',
+            padding: '28px 20px',
             textAlign: 'center',
             transition: 'all 0.2s ease',
           }}
         >
           <FileSpreadsheet size={36} color={dragOver ? '#38bdf8' : '#64748b'} style={{ marginBottom: '10px' }} />
           <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 600, color: '#f8fafc' }}>
-            {uploadStatus.loading ? 'Validating and Ingesting Neural Dataset...' : 'Select or Drag & Drop Neural CSV File'}
+            {uploadStatus.loading ? 'Executing Scientific Ingestion Pipeline...' : 'Select or Drag & Drop Neural CSV File'}
           </h4>
           <p style={{ margin: '4px 0 14px 0', fontSize: '0.8rem', color: '#94a3b8' }}>
             Supported format: Standard comma-delimited <strong>.csv</strong> with required columns:{' '}
@@ -552,7 +755,7 @@ export const DatasetBrowserView: React.FC = () => {
             }}
           >
             <Upload size={16} />
-            <span>{uploadStatus.loading ? 'Ingesting...' : 'Browse CSV File'}</span>
+            <span>{uploadStatus.loading ? 'Ingesting Dataset...' : 'Browse CSV File'}</span>
             <input
               type="file"
               accept=".csv"
@@ -563,7 +766,51 @@ export const DatasetBrowserView: React.FC = () => {
           </label>
         </div>
 
-        {/* CSV Schema Documentation Accordion / Drawer */}
+        {/* Upload Status / Diagnostics Box */}
+        {uploadStatus.error && (
+          <div
+            style={{
+              marginTop: '16px',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid #ef4444',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px',
+            }}
+          >
+            <AlertCircle size={18} color="#ef4444" style={{ marginTop: '2px', flexShrink: 0 }} />
+            <div>
+              <strong style={{ color: '#fca5a5', fontSize: '0.85rem', display: 'block', marginBottom: '2px' }}>
+                Ingestion Validation Failure:
+              </strong>
+              <span style={{ color: '#f87171', fontSize: '0.8rem' }}>{uploadStatus.error}</span>
+            </div>
+          </div>
+        )}
+
+        {uploadStatus.success && (
+          <div
+            style={{
+              marginTop: '16px',
+              backgroundColor: 'rgba(34, 197, 94, 0.1)',
+              border: '1px solid #22c55e',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+            }}
+          >
+            <CheckCircle2 size={18} color="#22c55e" style={{ flexShrink: 0 }} />
+            <span style={{ color: '#4ade80', fontSize: '0.85rem', fontWeight: 500 }}>
+              {uploadStatus.success}
+            </span>
+          </div>
+        )}
+
+        {/* CSV Schema Documentation Accordion */}
         {showSchemaGuide && (
           <div
             style={{

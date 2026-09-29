@@ -14,12 +14,12 @@ const ExplorerContent: React.FC = () => {
     <div
       style={{
         width: '100%',
-        maxWidth: '1720px',
+        maxWidth: '1920px',
         margin: '0 auto',
-        padding: '16px 20px',
+        padding: '16px 24px',
         display: 'flex',
         flexDirection: 'column',
-        gap: '16px',
+        gap: '18px',
       }}
     >
       {/* Explorer Header, Global Actions & 4-Submodule Sub-navigation */}

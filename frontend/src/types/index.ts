@@ -75,6 +75,30 @@ export interface TrialMetadata {
   parameters: Record<string, unknown>;
 }
 
+export type UploadStage =
+  | 'idle'
+  | 'uploading'
+  | 'parsing'
+  | 'validating'
+  | 'canonicalizing'
+  | 'creating_session'
+  | 'generating_metadata'
+  | 'completed'
+  | 'error';
+
+export interface UploadWorkflowState {
+  stage: UploadStage;
+  fileName: string | null;
+  fileSize: number | null;
+  rowCount: number | null;
+  timestamp: string | null;
+  error: string | null;
+  success: string | null;
+  assignedSessionId: string | null;
+  totalUnits: number | null;
+  totalTrials: number | null;
+}
+
 export interface UploadResponse {
   session_id: string;
   mouse_id: string;
@@ -83,6 +107,8 @@ export interface UploadResponse {
   available_stimuli: string[];
   total_units: number;
   total_trials: number;
+  row_count?: number;
+  upload_timestamp?: string;
   provenance: ProvenanceType;
   message: string;
 }

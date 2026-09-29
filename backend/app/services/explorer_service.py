@@ -6,6 +6,7 @@ import uuid
 import hashlib
 import logging
 from pathlib import Path
+from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
 import numpy as np
 import pandas as pd
@@ -465,18 +466,25 @@ class ExplorerService:
         matrix: List[List[float]] = trial_matrices[str(unique_trials[0])]
 
         upload_id = f"upload_{uuid.uuid4().hex[:8]}"
+        now_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        row_count = int(len(df))
         session_metadata = SessionMetadata(
             session_id=upload_id,
             mouse_id="user_mouse",
             genotype="User Custom",
             session_type="user_upload",
-            date_of_acquisition=None,
+            date_of_acquisition=now_iso,
             total_units=len(unique_neurons),
             total_trials=len(trial_metadata),
             duration_sec=round(float(df["time"].max() - df["time"].min()), 2),
             available_brain_regions=unique_regions,
             available_stimuli=stimulus_information,
-            extra={"filename": filename, "trial_matrices": trial_matrices}
+            extra={
+                "filename": filename,
+                "trial_matrices": trial_matrices,
+                "row_count": row_count,
+                "upload_timestamp": now_iso
+            }
         )
 
         canonical_dataset = CanonicalNeuralDataset(
@@ -504,6 +512,8 @@ class ExplorerService:
             available_stimuli=stimulus_information,
             total_units=len(unique_neurons),
             total_trials=len(unique_trials),
+            row_count=row_count,
+            upload_timestamp=now_iso,
             provenance=ProvenanceEnum.USER_UPLOADED,
             message="Dataset successfully uploaded and converted to CanonicalNeuralDataset"
         )

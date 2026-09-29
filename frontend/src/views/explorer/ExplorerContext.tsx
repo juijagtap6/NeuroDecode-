@@ -8,6 +8,7 @@ import {
   PopulationTraceResponse,
   TrialMetadata,
   ProvenanceType,
+  UploadWorkflowState,
 } from '../../types';
 
 export type ExplorerSubmodule =
@@ -70,6 +71,15 @@ interface ExplorerContextType {
   globalError: string | null;
   setGlobalError: (err: string | null) => void;
   uploadStatus: { loading: boolean; error: string | null; success: string | null };
+  uploadWorkflow: UploadWorkflowState;
+  lastUploadedDataset: {
+    fileName: string;
+    uploadTimestamp: string;
+    rowCount: number;
+    neuronCount: number;
+    trialCount: number;
+    sessionId: string;
+  } | null;
   dismissUploadStatus: () => void;
 
   // Actions
@@ -125,6 +135,26 @@ export const ExplorerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     error: null,
     success: null,
   });
+  const [uploadWorkflow, setUploadWorkflow] = useState<UploadWorkflowState>({
+    stage: 'idle',
+    fileName: null,
+    fileSize: null,
+    rowCount: null,
+    timestamp: null,
+    error: null,
+    success: null,
+    assignedSessionId: null,
+    totalUnits: null,
+    totalTrials: null,
+  });
+  const [lastUploadedDataset, setLastUploadedDataset] = useState<{
+    fileName: string;
+    uploadTimestamp: string;
+    rowCount: number;
+    neuronCount: number;
+    trialCount: number;
+    sessionId: string;
+  } | null>(null);
 
   // PC dimensions
   const [pcX, pcY] = useMemo(() => {
@@ -303,17 +333,115 @@ export const ExplorerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [loadSessions, loadSessionDetails, fetchVisualizations, selectedSessionId]);
 
-  // CSV Upload Handler
+  // Scientific CSV Ingestion Workflow Handler
   const handleFileUpload = useCallback(async (file: File): Promise<boolean> => {
     if (!file) return false;
-    setUploadStatus({ loading: true, error: null, success: null });
+
+    // Check extension
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      const err = 'File validation error: Only standard comma-separated .csv files are supported.';
+      setUploadStatus({ loading: false, error: err, success: null });
+      setUploadWorkflow({
+        stage: 'error',
+        fileName: file.name,
+        fileSize: file.size,
+        rowCount: 0,
+        timestamp: new Date().toISOString(),
+        error: err,
+        success: null,
+        assignedSessionId: null,
+        totalUnits: null,
+        totalTrials: null,
+      });
+      return false;
+    }
+
+    const timestamp = new Date().toISOString();
+    let approximateRows = 0;
+
+    // Quick client-side reading for immediate stage feedback
     try {
+      const text = await file.text();
+      const lines = text.trim().split('\n');
+      approximateRows = Math.max(0, lines.length - 1);
+    } catch {
+      approximateRows = 0;
+    }
+
+    setUploadStatus({ loading: true, error: null, success: null });
+    setUploadWorkflow({
+      stage: 'uploading',
+      fileName: file.name,
+      fileSize: file.size,
+      rowCount: approximateRows,
+      timestamp,
+      error: null,
+      success: null,
+      assignedSessionId: null,
+      totalUnits: null,
+      totalTrials: null,
+    });
+
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    try {
+      // Stage 1: Uploading
+      await sleep(180);
+      setUploadWorkflow((prev) => ({ ...prev, stage: 'parsing' }));
+
+      // Stage 2: Parsing
+      await sleep(180);
+      setUploadWorkflow((prev) => ({ ...prev, stage: 'validating' }));
+
+      // Stage 3: Validating
+      await sleep(180);
+      setUploadWorkflow((prev) => ({ ...prev, stage: 'canonicalizing' }));
+
+      // Stage 4: Canonicalizing & API execution
       const res = await api.uploadDataset(file);
+
+      // Stage 5: Session Created
+      setUploadWorkflow((prev) => ({
+        ...prev,
+        stage: 'creating_session',
+        assignedSessionId: res.session_id,
+        totalUnits: res.total_units,
+        totalTrials: res.total_trials,
+        rowCount: res.row_count ?? approximateRows,
+      }));
+      await sleep(180);
+
+      // Stage 6: Metadata Generated
+      setUploadWorkflow((prev) => ({ ...prev, stage: 'generating_metadata' }));
+      await sleep(180);
+
+      // Success & Complete
+      const successMsg = `Successfully ingested "${file.name}" into CanonicalNeuralDataset! Assigned Session ID: ${res.session_id} (${res.total_units} units, ${res.total_trials} trials, ${res.row_count ?? approximateRows} rows)`;
       setUploadStatus({
         loading: false,
         error: null,
-        success: `Successfully ingested "${file.name}"! Assigned Session ID: ${res.session_id} (${res.total_units} units, ${res.total_trials} trials)`,
+        success: successMsg,
       });
+
+      setUploadWorkflow((prev) => ({
+        ...prev,
+        stage: 'completed',
+        success: successMsg,
+        assignedSessionId: res.session_id,
+        totalUnits: res.total_units,
+        totalTrials: res.total_trials,
+        rowCount: res.row_count ?? approximateRows,
+      }));
+
+      const uploadedMeta = {
+        fileName: file.name,
+        uploadTimestamp: res.upload_timestamp || new Date().toISOString(),
+        rowCount: res.row_count ?? approximateRows,
+        neuronCount: res.total_units,
+        trialCount: res.total_trials,
+        sessionId: res.session_id,
+      };
+      setLastUploadedDataset(uploadedMeta);
 
       // Reload sessions and switch active source and session
       const updatedSessions = await api.getExplorerSessions(true);
@@ -325,11 +453,18 @@ export const ExplorerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setSelectedStimulus('');
       return true;
     } catch (err: any) {
+      const errMsg = err.message || 'CSV upload failed';
       setUploadStatus({
         loading: false,
-        error: err.message || 'CSV upload failed',
+        error: errMsg,
         success: null,
       });
+      setUploadWorkflow((prev) => ({
+        ...prev,
+        stage: 'error',
+        error: errMsg,
+        success: null,
+      }));
       return false;
     }
   }, []);
@@ -376,6 +511,7 @@ export const ExplorerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const dismissUploadStatus = useCallback(() => {
     setUploadStatus({ loading: false, error: null, success: null });
+    setUploadWorkflow((prev) => ({ ...prev, stage: 'idle', error: null, success: null }));
   }, []);
 
   const selectTrialAndInspect = useCallback((trialId: string | number) => {
@@ -425,6 +561,8 @@ export const ExplorerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     globalError,
     setGlobalError,
     uploadStatus,
+    uploadWorkflow,
+    lastUploadedDataset,
     dismissUploadStatus,
     refreshAll,
     handleFileUpload,

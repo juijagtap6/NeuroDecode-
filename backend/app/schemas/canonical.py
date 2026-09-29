@@ -110,5 +110,7 @@ class UploadResponse(BaseModel):
     available_stimuli: List[str] = Field(..., description="Discovered stimuli")
     total_units: int = Field(..., description="Count of parsed neurons")
     total_trials: int = Field(..., description="Count of parsed trials")
+    row_count: Optional[int] = Field(None, description="Count of parsed data rows")
+    upload_timestamp: Optional[str] = Field(None, description="ISO timestamp of dataset upload")
     provenance: ProvenanceEnum = Field(ProvenanceEnum.USER_UPLOADED, description="Provenance tag")
     message: str = Field("Dataset successfully uploaded and converted to CanonicalNeuralDataset", description="Status message")
