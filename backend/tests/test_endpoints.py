@@ -47,7 +47,7 @@ def test_lif_simulation_endpoint():
 def test_decoder_returns_clear_blocker_when_data_not_cached():
     """Verify decoder returns 400 with explicit blocker instead of fabricating synthetic data."""
     payload = {
-        "session_id": 715093703,
+        "session_id": 999999999,
         "stimulus_name": "drifting_gratings",
         "target_variable": "orientation",
         "model_type": "logistic_regression",

@@ -60,15 +60,250 @@ export interface CanonicalSpikeMatrix {
   metadata: Record<string, unknown>;
 }
 
+export type DecoderModelType = 'logistic_regression' | 'linear_svm' | 'random_forest' | 'ridge_classifier';
+
 export interface DecoderTrainRequest {
   session_id: number;
-  stimulus_name: string;
+  stimulus_name?: string;
   target_variable: string;
-  model_type: 'logistic_regression' | 'ridge_classifier' | 'random_forest';
+  model_type: DecoderModelType;
+  model_parameters?: Record<string, unknown>;
   test_size: number;
   cv_folds: number;
   selected_structures?: string[];
+  selected_unit_ids?: number[];
+  bin_size_sec?: number;
   time_window_sec: [number, number];
+  random_state?: number;
+}
+
+export interface DecoderDatasetSummary {
+  dataset_id: string;
+  session_id: number;
+  name: string;
+  session_metadata: Record<string, unknown>;
+  available_labels: string[];
+  available_brain_regions: string[];
+  available_units: number[];
+  available_stimuli: string[];
+  trial_count: number;
+  unit_count: number;
+  provenance: string;
+}
+
+export interface DecoderDatasetDetail {
+  dataset_id: string;
+  session_id: number;
+  name: string;
+  session_metadata: Record<string, unknown>;
+  available_labels: string[];
+  available_brain_regions: string[];
+  available_units: number[];
+  available_stimuli: string[];
+  unit_region_mapping: Record<string, string>;
+  trial_count: number;
+  unit_count: number;
+  stimulus_counts: Record<string, number>;
+  condition_counts: Record<string, number>;
+  provenance: string;
+}
+
+export interface DecodingTargetInfo {
+  name: string;
+  display_name: string;
+  description: string;
+  target_type: string;
+  classes: string[];
+  class_count: number;
+  sample_count: number;
+  class_balance: Record<string, number>;
+  compatible_stimulus?: string | null;
+}
+
+export interface TargetsResponse {
+  session_id: number;
+  dataset_id: string;
+  targets: DecodingTargetInfo[];
+}
+
+export interface PerClassMetric {
+  class_name: string;
+  precision: number;
+  recall: number;
+  f1_score: number;
+  support: number;
+}
+
+export interface FoldMetric {
+  fold: number;
+  accuracy: number;
+  precision_macro: number;
+  recall_macro: number;
+  f1_macro: number;
+  train_samples: number;
+  val_samples: number;
+}
+
+export interface CrossValidationMetrics {
+  cv_folds: number;
+  mean_accuracy: number;
+  std_accuracy: number;
+  mean_precision: number;
+  std_precision: number;
+  mean_recall: number;
+  std_recall: number;
+  mean_f1: number;
+  std_f1: number;
+  fold_metrics: FoldMetric[];
+  adjusted_folds_note?: string | null;
+}
+
+export interface HeldOutMetrics {
+  accuracy: number;
+  balanced_accuracy: number;
+  precision_macro: number;
+  precision_weighted: number;
+  recall_macro: number;
+  recall_weighted: number;
+  f1_macro: number;
+  f1_weighted: number;
+  support: number;
+  per_class: Record<string, PerClassMetric>;
+}
+
+export interface PerformanceResponse {
+  run_id: string;
+  held_out_metrics: HeldOutMetrics;
+  cross_validation: CrossValidationMetrics;
+  data_split_info: Record<string, unknown>;
+}
+
+export interface ConfusionMatrixResponse {
+  run_id: string;
+  class_labels: string[];
+  matrix: number[][];
+  normalized_matrix: number[][];
+  total_samples: number;
+}
+
+export interface FeatureImportanceItem {
+  rank: number;
+  unit_id: number;
+  importance_score: number;
+  signed_weight?: number | null;
+  direction?: string | null;
+  structure: string;
+  ccfv3_area: string;
+  class_associations?: Record<string, number> | null;
+  firing_rate?: number | null;
+  snr?: number | null;
+}
+
+export interface FeatureImportanceResponse {
+  run_id: string;
+  model_type: string;
+  interpretation_type: string;
+  explanation_note: string;
+  features: FeatureImportanceItem[];
+}
+
+export interface RegionAggregation {
+  rank: number;
+  region: string;
+  full_name: string;
+  hierarchy: string;
+  division: string;
+  unit_count: number;
+  mean_importance: number;
+  total_importance: number;
+  max_importance: number;
+  units: number[];
+}
+
+export interface UnitBrainMap {
+  unit_id: number;
+  region: string;
+  full_name: string;
+  hierarchy: string;
+  importance_score: number;
+  signed_weight?: number | null;
+  rank: number;
+}
+
+export interface BrainMappingResponse {
+  run_id: string;
+  total_units: number;
+  mapped_units: number;
+  unmapped_units: number;
+  aggregation_method: string;
+  regional_aggregations: RegionAggregation[];
+  units: UnitBrainMap[];
+  scientific_note: string;
+}
+
+export interface TrialPrediction {
+  trial_id: number;
+  true_label: string;
+  predicted_label: string;
+  correct: boolean;
+  confidence?: number | null;
+  decision_score?: number | null;
+  score_type: string;
+  class_scores?: Record<string, number> | null;
+  trial_metadata: Record<string, unknown>;
+}
+
+export interface PredictionsResponse {
+  run_id: string;
+  total_predictions: number;
+  correct_count: number;
+  incorrect_count: number;
+  accuracy: number;
+  score_type: string;
+  predictions: TrialPrediction[];
+}
+
+export interface TrialNeuralFeature {
+  unit_id: number;
+  structure: string;
+  firing_rate: number;
+  unit_importance: number;
+  signed_weight?: number | null;
+}
+
+export interface PredictionDetailResponse {
+  run_id: string;
+  trial_id: number;
+  true_label: string;
+  predicted_label: string;
+  correct: boolean;
+  confidence?: number | null;
+  decision_score?: number | null;
+  score_type: string;
+  class_scores?: Record<string, number> | null;
+  trial_metadata: Record<string, unknown>;
+  top_neural_features: TrialNeuralFeature[];
+}
+
+export interface DecoderRunResponse {
+  run_id: string;
+  status: string;
+  session_id: number;
+  target_variable: string;
+  model_type: string;
+  model_name: string;
+  classes: string[];
+  created_at: string;
+  summary: string;
+  provenance: string;
+  config: Record<string, unknown>;
+  dataset_summary: Record<string, unknown>;
+  test_accuracy?: number | null;
+  cv_mean_accuracy?: number | null;
+  cv_std_accuracy?: number | null;
+  f1_score_macro?: number | null;
+  confusion_matrix?: number[][] | null;
+  feature_importances?: FeatureImportanceRecord[] | null;
 }
 
 export interface FeatureImportanceRecord {
@@ -89,6 +324,7 @@ export interface DecoderResult {
   f1_score_macro: number;
   feature_importances: FeatureImportanceRecord[];
   summary: string;
+  run_id?: string;
 }
 
 export interface LIFSimConfig {
