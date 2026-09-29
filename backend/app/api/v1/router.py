@@ -160,13 +160,14 @@ def get_neuron_membrane_trace(neuron_id: int) -> MembranePotentialData:
     return trace_data
 
 @router.get("/simulation/sample-csv")
-def get_sample_csv():
-    """Download a valid sample spike train CSV for Bring Your Own Data testing."""
-    sample_content = lif_simulation_service.generate_sample_csv()
+def get_sample_csv(sample_type: str = "spike"):
+    """Download a valid sample spike train or continuous membrane potential CSV for Bring Your Own Data testing."""
+    sample_content = lif_simulation_service.generate_sample_csv(sample_type=sample_type)
+    filename = "sample_neural_voltage.csv" if sample_type == "voltage" else "sample_neural_spikes.csv"
     return Response(
         content=sample_content,
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=sample_neural_spikes.csv"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 @router.post("/simulation/lif", response_model=LIFSimResult)

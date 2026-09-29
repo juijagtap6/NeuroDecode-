@@ -142,8 +142,11 @@ export const api = {
   getNeuronTrace: (neuronId: number): Promise<MembranePotentialData> =>
     request<MembranePotentialData>(`/simulation/trace/${neuronId}`),
 
-  getSampleCsv: async (): Promise<string> => {
-    const response = await fetch(`${BASE_URL}/simulation/sample-csv`);
+  getSampleCsv: async (sampleType: string = 'spike'): Promise<string> => {
+    const url = sampleType && sampleType !== 'spike'
+      ? `${BASE_URL}/simulation/sample-csv?sample_type=${encodeURIComponent(sampleType)}`
+      : `${BASE_URL}/simulation/sample-csv`;
+    const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to download sample CSV');
     return response.text();
   },

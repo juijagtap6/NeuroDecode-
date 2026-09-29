@@ -59,8 +59,9 @@ export const NeuronInspector: React.FC<NeuronInspectorProps> = ({
   let sparklinePath = '';
 
   if (trace && trace.length > 0) {
-    const minV = -75;
-    const maxV = 25;
+    const minV = Math.min(-75, Math.floor(Math.min(...trace) / 5) * 5);
+    const maxV = Math.max(25, Math.ceil(Math.max(...trace) / 5) * 5);
+    const vSpan = maxV - minV || 1;
     const step = Math.max(1, Math.floor(trace.length / 80));
     const sampled = [];
     for (let i = 0; i < trace.length; i += step) {
@@ -69,7 +70,7 @@ export const NeuronInspector: React.FC<NeuronInspectorProps> = ({
     const nPts = sampled.length;
     for (let i = 0; i < nPts; i++) {
       const x = (i / (nPts - 1 || 1)) * sparklineWidth;
-      const y = sparklineHeight - ((sampled[i] - minV) / (maxV - minV)) * sparklineHeight;
+      const y = sparklineHeight - ((sampled[i] - minV) / vSpan) * sparklineHeight;
       sparklinePath += i === 0 ? `M ${x.toFixed(1)} ${y.toFixed(1)}` : ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
     }
   }
@@ -282,9 +283,11 @@ export const NeuronInspector: React.FC<NeuronInspectorProps> = ({
               justifyContent: 'center',
               fontSize: '0.7rem',
               color: '#64748b',
+              textAlign: 'center',
+              padding: '0 8px',
             }}
           >
-            {count > 0 ? 'Extracellular timestamps only' : 'No spikes emitted'}
+            Intracellular Membrane Potential Not Available
           </div>
         )}
       </div>

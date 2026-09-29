@@ -193,11 +193,11 @@ describe('SimulationView Component', () => {
     await waitFor(() => {
       expect(api.runSimulation).toHaveBeenCalledTimes(2);
       expect(screen.getByText(/Population Spike Raster Plot/i)).toBeDefined();
-      expect(screen.getByText(/Membrane Potential Dynamics/i)).toBeDefined();
+      expect(screen.getByText(/Intracellular Membrane Potential/i)).toBeDefined();
     });
   });
 
-  it('handles BYOD CSV upload and marks provenance as user_uploaded', async () => {
+  it('handles BYOD spike-only CSV upload and displays Intracellular Membrane Potential Not Available', async () => {
     const byodResponse: SimulationResponse = {
       provenance: 'user_uploaded',
       neuron_ids: [1, 2, 3],
@@ -229,7 +229,7 @@ describe('SimulationView Component', () => {
         selected_neuron: 1,
         provenance: 'user_uploaded',
       },
-      simulation_parameters: { source_file: 'user_spikes.csv' },
+      simulation_parameters: { source_file: 'sample_neural_spikes.csv' },
     };
 
     vi.spyOn(api, 'uploadSimulationCsv').mockResolvedValueOnce(byodResponse);
@@ -243,10 +243,9 @@ describe('SimulationView Component', () => {
 
     // Simulate file input change
     const file = new File(['neuron_id,timestamp_ms\n1,10.5\n2,15.0\n3,12.0'], 'spikes.csv', { type: 'text/csv' });
-    const fileInput = screen.getByLabelText(/Upload Spike Train CSV/i, { selector: 'input' }) || document.querySelector('input[type="file"]');
-    if (fileInput) {
-      fireEvent.change(fileInput, { target: { files: [file] } });
-    }
+    const fileInput = screen.getByLabelText(/Upload Spike Train CSV/i);
+    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
+    fireEvent.change(fileInput, { target: { files: [file] } });
 
     // Click upload
     const uploadBtn = screen.getByRole('button', { name: /Upload & Process Dataset/i });
@@ -254,8 +253,100 @@ describe('SimulationView Component', () => {
 
     await waitFor(() => {
       expect(api.uploadSimulationCsv).toHaveBeenCalled();
-      // Displays the expected message for BYOD mode
-      expect(screen.getByText(/Intracellular Membrane Potential Not Available/i)).toBeDefined();
+      // Displays the expected section and Not Available message for spike-only BYOD
+      expect(screen.getAllByText(/Intracellular Membrane Potential/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Intracellular Membrane Potential Not Available/i).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('handles BYOD voltage-containing CSV upload and displays continuous V(t) trace', async () => {
+    const voltageByodResponse: SimulationResponse = {
+      provenance: 'user_uploaded',
+      neuron_ids: [1, 2],
+      spike_events: [{ neuron_id: 1, time_ms: 5.0 }],
+      spikes_by_neuron: { '1': [5.0], '2': [] },
+      membrane_potentials: {
+        time_ms: [0, 1, 2, 3, 4, 5, 6],
+        traces: {
+          '1': [-65.0, -64.2, -62.5, -58.0, -52.0, 20.0, -65.0],
+          '2': [-65.0, -63.8, -60.5, -55.0, -50.5, -65.0, -65.0],
+        },
+        v_thresh: -50.0,
+        v_reset: -65.0,
+        v_rest: -65.0,
+      },
+      spike_counts: { '1': 1, '2': 0 },
+      firing_rates: { '1': 142.8, '2': 0.0 },
+      isi_statistics: {
+        mean_isi_ms: { '1': 0, '2': 0 },
+        cv_isi: { '1': 0, '2': 0 },
+        population_mean_isi_ms: 0,
+        population_cv_isi: 0,
+      },
+      population_firing_rate: {
+        time_bins_ms: [3.5],
+        rates_hz: [142.8],
+        bin_size_ms: 10.0,
+      },
+      summary: {
+        total_neurons: 2,
+        duration_ms: 50.0,
+        total_spikes: 1,
+        mean_firing_rate_hz: 71.4,
+        selected_neuron: 1,
+        provenance: 'user_uploaded',
+      },
+      simulation_parameters: { source_file: 'sample_neural_voltage.csv', format: 'csv_membrane_potential' },
+    };
+
+    vi.spyOn(api, 'uploadSimulationCsv').mockResolvedValueOnce(voltageByodResponse);
+
+    render(<SimulationView />);
+    await waitFor(() => expect(api.runSimulation).toHaveBeenCalled());
+
+    // Switch to BYOD tab
+    const byodTab = screen.getByRole('button', { name: /BYOD \(CSV\)/i });
+    fireEvent.click(byodTab);
+
+    // Provide voltage CSV
+    const file = new File(
+      ['neuron_id,timestamp_ms,membrane_potential_mv\n1,0,-65.0\n1,5,20.0\n'],
+      'sample_neural_voltage.csv',
+      { type: 'text/csv' }
+    );
+    const fileInput = screen.getByLabelText(/Upload Spike Train CSV/i);
+    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // Click upload
+    const uploadBtn = screen.getByRole('button', { name: /Upload & Process Dataset/i });
+    fireEvent.click(uploadBtn);
+
+    await waitFor(() => {
+      expect(api.uploadSimulationCsv).toHaveBeenCalled();
+      // Displays Intracellular Membrane Potential with actual V(t) Dynamics
+      expect(screen.getByText(/Intracellular Membrane Potential Dynamics V\(t\)/i)).toBeDefined();
+      expect(screen.getByText(/Mini Membrane V\(t\) Trace/i)).toBeDefined();
+      // Not Available message must NOT be present
+      expect(screen.queryByText(/Intracellular Membrane Potential Not Available/i)).toBeNull();
+    });
+  });
+
+  it('triggers download for Sample CSV without errors', async () => {
+    vi.spyOn(api, 'getSampleCsv').mockResolvedValueOnce('neuron_id,timestamp_ms\n0,12.4\n');
+
+    render(<SimulationView />);
+    await waitFor(() => expect(api.runSimulation).toHaveBeenCalled());
+
+    // Switch to BYOD
+    const byodTab = screen.getByRole('button', { name: /BYOD \(CSV\)/i });
+    fireEvent.click(byodTab);
+
+    const downloadBtn = screen.getByRole('button', { name: /Sample CSV/i });
+    fireEvent.click(downloadBtn);
+
+    await waitFor(() => {
+      expect(api.getSampleCsv).toHaveBeenCalled();
     });
   });
 
@@ -273,10 +364,9 @@ describe('SimulationView Component', () => {
 
     // Set file
     const file = new File(['bad'], 'bad.csv', { type: 'text/csv' });
-    const fileInput = document.querySelector('input[type="file"]');
-    if (fileInput) {
-      fireEvent.change(fileInput, { target: { files: [file] } });
-    }
+    const fileInput = screen.getByLabelText(/Upload Spike Train CSV/i);
+    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
+    fireEvent.change(fileInput, { target: { files: [file] } });
 
     const uploadBtn = screen.getByRole('button', { name: /Upload & Process Dataset/i });
     fireEvent.click(uploadBtn);

@@ -368,28 +368,32 @@ class LIFSimulationService:
     # On-Demand Neuron Trace Retrieval
     # -------------------------------------------------------------------------
     def get_neuron_trace(self, neuron_id: int) -> Optional[MembranePotentialData]:
-        """Fetch membrane potential trace for a specific neuron from the cached simulation."""
+        """Fetch membrane potential trace for a specific neuron from the cached simulation or BYOD upload."""
         if not self._last_simulation:
             return None
 
         traces = self._last_simulation["traces"]
         nid_str = str(neuron_id)
 
-        # If already recorded, return it
-        if neuron_id in traces:
+        # If already recorded in trace dictionary, return it
+        if neuron_id in traces or nid_str in traces:
+            tr = traces[neuron_id] if neuron_id in traces else traces[nid_str]
             time_pts = self._last_simulation["time_points"]
-            step_factor = self._last_simulation["step_factor"]
+            step_factor = self._last_simulation.get("step_factor", 1)
             n_steps = len(time_pts)
-            decimated_times = [round(float(time_pts[idx]), 2) for idx in range(0, n_steps, step_factor)]
-            tr = traces[neuron_id]
-            resampled = []
-            for b_idx in range(0, n_steps, step_factor):
-                chunk = tr[b_idx:min(n_steps, b_idx + step_factor)]
-                max_val = float(np.max(chunk))
-                if max_val >= 15.0:
-                    resampled.append(round(max_val, 2))
-                else:
-                    resampled.append(round(float(chunk[0]), 2))
+            if step_factor > 1:
+                decimated_times = [round(float(time_pts[idx]), 2) for idx in range(0, n_steps, step_factor)]
+                resampled = []
+                for b_idx in range(0, n_steps, step_factor):
+                    chunk = tr[b_idx:min(n_steps, b_idx + step_factor)]
+                    max_val = float(np.max(chunk))
+                    if max_val >= 15.0:
+                        resampled.append(round(max_val, 2))
+                    else:
+                        resampled.append(round(float(chunk[0]), 2))
+            else:
+                decimated_times = [round(float(t), 2) for t in time_pts]
+                resampled = [round(float(v), 2) for v in tr]
 
             return MembranePotentialData(
                 time_ms=decimated_times,
@@ -399,7 +403,9 @@ class LIFSimulationService:
                 v_rest=self._last_simulation["v_rest"],
             )
 
-        # If not already recorded in trace dictionary, run quick single neuron simulation with same parameters
+        # For BYOD uploads (no biophysical simulation params), do NOT simulate or fabricate data
+        if self._last_simulation.get("params") is None:
+            return None
         params: LIFPopulationParams = self._last_simulation["params"]
         time_pts = self._last_simulation["time_points"]
         dt = params.dt_ms
@@ -495,6 +501,11 @@ class LIFSimulationService:
             "spike_time_ms", "time_s", "timestamp_ms", "timestamp_s", "t"
         ]
 
+        voltage_col_candidates = [
+            "membrane_potential_mv", "membrane_potential", "voltage_mv",
+            "voltage", "v_mv", "v", "vm", "potential_mv", "v_m"
+        ]
+
         found_neuron_col = None
         for candidate in neuron_col_candidates:
             if candidate in lower_cols:
@@ -517,8 +528,21 @@ class LIFSimulationService:
                     found_time_col = orig
                     break
 
+        found_voltage_col = None
+        for candidate in voltage_col_candidates:
+            if candidate in lower_cols:
+                found_voltage_col = lower_cols[candidate]
+                break
+        if not found_voltage_col:
+            for lk, orig in lower_cols.items():
+                if (any(kw in lk for kw in ["membrane_potential", "voltage", "potential"]) or lk in ("v", "vm")) and orig not in (found_neuron_col, found_time_col):
+                    found_voltage_col = orig
+                    break
+
+        membrane_data: Optional[MembranePotentialData] = None
+
         if found_neuron_col and found_time_col:
-            # Event format
+            # Event / Timeseries format
             # Validate types
             time_series = pd.to_numeric(df[found_time_col], errors="coerce")
             neuron_series = pd.to_numeric(df[found_neuron_col], errors="coerce")
@@ -567,6 +591,19 @@ class LIFSimulationService:
                 bad_val = df.loc[bad_idx, found_neuron_col]
                 raise ValueError(f"Row {bad_row} contains non-integer neuron ID ({bad_val}). Neuron IDs must be integer values.")
 
+            # Validate voltage series if present
+            voltage_series = None
+            if found_voltage_col:
+                voltage_series = pd.to_numeric(df[found_voltage_col], errors="coerce")
+                if voltage_series.isna().any():
+                    bad_idx = voltage_series.isna().idxmax()
+                    bad_row = int(bad_idx) + 2
+                    bad_val = df.loc[bad_idx, found_voltage_col]
+                    raise ValueError(
+                        f"Row {bad_row} contains non-numeric {found_voltage_col}='{bad_val}'. "
+                        "Membrane potential values must be valid numbers."
+                    )
+
             valid_times = time_series.to_numpy()
             valid_neurons = neuron_series.astype(int).to_numpy()
 
@@ -575,11 +612,81 @@ class LIFSimulationService:
             is_seconds = found_time_col.lower().endswith(("_s", "_sec")) or (max_time < 30.0 and "ms" not in found_time_col.lower())
 
             scale_to_ms = 1000.0 if is_seconds else 1.0
+            scaled_times = np.round(valid_times * scale_to_ms, 2)
 
-            for n_id, t_val in zip(valid_neurons, valid_times):
-                t_ms = round(float(t_val * scale_to_ms), 2)
-                spike_events.append(SpikeEvent(neuron_id=int(n_id), time_ms=t_ms))
-                neuron_ids_set.add(int(n_id))
+            if found_voltage_col and voltage_series is not None:
+                # Voltage measurements provided in CSV (STATE B)
+                valid_voltages = voltage_series.to_numpy().astype(float)
+                # Auto-scale Volts to mV if values are in [-0.2, 0.15] V
+                min_v_raw = float(np.min(valid_voltages)) if len(valid_voltages) > 0 else -65.0
+                max_v_raw = float(np.max(valid_voltages)) if len(valid_voltages) > 0 else 20.0
+                if -0.2 <= min_v_raw < 0.0 and max_v_raw <= 0.15:
+                    valid_voltages = valid_voltages * 1000.0
+
+                unique_nids = sorted(list(set(valid_neurons.tolist())))
+                for nid in unique_nids:
+                    neuron_ids_set.add(int(nid))
+
+                traces_dict: Dict[str, List[float]] = {}
+                time_vector_common: List[float] = []
+
+                # Baseline rest potential
+                subthresh = valid_voltages[valid_voltages < -50.0] if np.any(valid_voltages < -50.0) else valid_voltages
+                v_rest = round(float(np.median(subthresh)), 1) if len(subthresh) > 0 else -65.0
+                v_thresh = -50.0
+                v_reset = -65.0
+
+                for nid in unique_nids:
+                    mask = (valid_neurons == nid)
+                    n_times = scaled_times[mask]
+                    n_volts = valid_voltages[mask]
+
+                    sort_order = np.argsort(n_times)
+                    s_times = n_times[sort_order]
+                    s_volts = n_volts[sort_order]
+
+                    n_pts = len(s_times)
+                    step_factor = max(1, n_pts // 1500)
+                    if step_factor > 1:
+                        dec_times: List[float] = []
+                        dec_volts: List[float] = []
+                        for b_idx in range(0, n_pts, step_factor):
+                            chunk_v = s_volts[b_idx:min(n_pts, b_idx + step_factor)]
+                            chunk_t = s_times[b_idx:min(n_pts, b_idx + step_factor)]
+                            max_val = float(np.max(chunk_v))
+                            if max_val >= 15.0:
+                                dec_volts.append(round(max_val, 2))
+                                dec_times.append(round(float(chunk_t[np.argmax(chunk_v)]), 2))
+                            else:
+                                dec_volts.append(round(float(chunk_v[0]), 2))
+                                dec_times.append(round(float(chunk_t[0]), 2))
+                        traces_dict[str(nid)] = dec_volts
+                        if not time_vector_common or len(dec_times) > len(time_vector_common):
+                            time_vector_common = dec_times
+                    else:
+                        traces_dict[str(nid)] = [round(float(v), 2) for v in s_volts]
+                        if not time_vector_common or len(s_times) > len(time_vector_common):
+                            time_vector_common = [round(float(t), 2) for t in s_times]
+
+                    # Detect action potentials from threshold crossings (V >= v_thresh)
+                    for idx in range(len(s_volts)):
+                        if s_volts[idx] >= v_thresh and (idx == 0 or s_volts[idx - 1] < v_thresh):
+                            t_event = round(float(s_times[idx]), 2)
+                            spike_events.append(SpikeEvent(neuron_id=int(nid), time_ms=t_event))
+
+                membrane_data = MembranePotentialData(
+                    time_ms=time_vector_common,
+                    traces=traces_dict,
+                    v_thresh=v_thresh,
+                    v_reset=v_reset,
+                    v_rest=v_rest,
+                )
+            else:
+                # Spike-only CSV (STATE A): Strictly no continuous intracellular trajectory
+                for n_id, t_ms in zip(valid_neurons, scaled_times):
+                    spike_events.append(SpikeEvent(neuron_id=int(n_id), time_ms=t_ms))
+                    neuron_ids_set.add(int(n_id))
+                membrane_data = None
 
         else:
             # Check for Binned Matrix / Wide format (e.g. rows = neurons, columns = time bins or vice versa)
@@ -653,6 +760,8 @@ class LIFSimulationService:
 
         # Estimate duration
         max_time_ms = max([ev.time_ms for ev in spike_events]) if spike_events else 100.0
+        if membrane_data and membrane_data.time_ms:
+            max_time_ms = max(max_time_ms, max(membrane_data.time_ms))
         duration_ms = max(50.0, math.ceil(max_time_ms / 50.0) * 50.0)
         duration_sec = duration_ms / 1000.0
 
@@ -737,6 +846,7 @@ class LIFSimulationService:
                 "total_events": len(spike_events),
                 "total_neurons": N,
                 "duration_ms": duration_ms,
+                "has_membrane_potential": membrane_data is not None,
             },
         )
 
@@ -752,18 +862,37 @@ class LIFSimulationService:
             provenance=ProvenanceEnum.USER_UPLOADED,
         )
 
+        # Cache BYOD simulation or clear cache
+        if membrane_data is not None:
+            self._last_simulation = {
+                "params": None,
+                "time_points": membrane_data.time_ms,
+                "traces": {str(k): v for k, v in membrane_data.traces.items()},
+                "spikes_by_neuron": spikes_by_neuron,
+                "v_thresh": membrane_data.v_thresh,
+                "v_reset": membrane_data.v_reset,
+                "v_rest": membrane_data.v_rest,
+                "step_factor": 1,
+            }
+        else:
+            self._last_simulation = None
+
         return SimulationResponse(
             provenance=ProvenanceEnum.USER_UPLOADED,
             neuron_ids=sorted_neuron_ids,
             spike_events=spike_events,
             spikes_by_neuron=spikes_by_neuron,
-            membrane_potentials=None,  # Extracellular spikes have no intracellular membrane trace
+            membrane_potentials=membrane_data,
             spike_counts=spike_counts,
             firing_rates=firing_rates,
             isi_statistics=isi_stats,
             population_firing_rate=pop_firing_rate,
             summary=summary,
-            simulation_parameters={"source_file": filename, "format": "csv_spike_train"},
+            simulation_parameters={
+                "source_file": filename,
+                "format": "csv_membrane_potential" if membrane_data is not None else "csv_spike_train",
+                "has_membrane_potential": membrane_data is not None,
+            },
             canonical_matrix=canonical_matrix,
         )
 
@@ -771,20 +900,49 @@ class LIFSimulationService:
     # Sample CSV Generator for Testing
     # -------------------------------------------------------------------------
     @staticmethod
-    def generate_sample_csv() -> str:
-        """Generate a valid sample spike train CSV for quick testing."""
-        rng = np.random.default_rng(42)
-        n_neurons = 25
-        duration_ms = 500.0
-        lines = ["neuron_id,timestamp_ms"]
-        for n_id in range(n_neurons):
-            # Poisson-like firing ~15-35 Hz
-            rate_hz = rng.uniform(15.0, 35.0)
-            expected_spikes = int(rate_hz * (duration_ms / 1000.0))
-            spike_times = np.sort(rng.uniform(5.0, duration_ms - 5.0, expected_spikes))
-            for t in spike_times:
-                lines.append(f"{n_id},{round(float(t), 2)}")
-        return "\n".join(lines)
+    def generate_sample_csv(sample_type: str = "spike") -> str:
+        """Generate a valid sample CSV for Bring Your Own Data testing."""
+        if sample_type == "voltage":
+            # Continuous intracellular membrane potential trajectory across 3 neurons
+            lines = ["neuron_id,timestamp_ms,membrane_potential_mv"]
+            times = np.arange(0, 100.5, 0.5)
+            spike_times_map = {0: [25.0, 75.0], 1: [40.0], 2: [60.0]}
+            for n_id in range(3):
+                spikes = spike_times_map[n_id]
+                v = -65.0
+                refractory = 0
+                for t in times:
+                    t_val = round(float(t), 2)
+                    if refractory > 0:
+                        v = -65.0
+                        refractory -= 1
+                    else:
+                        is_spike = any(abs(t_val - st) < 0.26 for st in spikes)
+                        if is_spike:
+                            v = 20.0
+                            refractory = 4  # 2 ms refractory
+                        else:
+                            min_dist_to_next = min([st - t_val for st in spikes if st >= t_val] + [999.0])
+                            if 0 < min_dist_to_next < 10.0:
+                                v = -65.0 + (10.0 - min_dist_to_next) * 1.5
+                            else:
+                                v = -65.0 + math.sin(t_val / 8.0 + n_id) * 1.8
+                    lines.append(f"{n_id},{t_val},{round(float(v), 2)}")
+            return "\n".join(lines)
+        else:
+            # Default spike-only format
+            rng = np.random.default_rng(42)
+            n_neurons = 25
+            duration_ms = 500.0
+            lines = ["neuron_id,timestamp_ms"]
+            for n_id in range(n_neurons):
+                # Poisson-like firing ~15-35 Hz
+                rate_hz = rng.uniform(15.0, 35.0)
+                expected_spikes = int(rate_hz * (duration_ms / 1000.0))
+                spike_times = np.sort(rng.uniform(5.0, duration_ms - 5.0, expected_spikes))
+                for t in spike_times:
+                    lines.append(f"{n_id},{round(float(t), 2)}")
+            return "\n".join(lines)
 
 
 lif_simulation_service = LIFSimulationService()

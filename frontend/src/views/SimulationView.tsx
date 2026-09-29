@@ -212,13 +212,13 @@ export const SimulationView: React.FC = () => {
     async (neuronId: number) => {
       setSelectedNeuronId(neuronId);
 
-      // If synthetic simulation and trace not yet loaded in activeMembraneData, fetch from backend
-      if (simulationData?.provenance === 'synthetic_lif') {
-        const nidStr = String(neuronId);
-        if (activeMembraneData?.traces?.[nidStr]) {
-          return;
-        }
+      const nidStr = String(neuronId);
+      if (activeMembraneData?.traces?.[nidStr]) {
+        return;
+      }
 
+      // If trace not yet loaded in activeMembraneData, fetch from backend (works for synthetic LIF & cached BYOD)
+      if (simulationData) {
         try {
           const traceData = await api.getNeuronTrace(neuronId);
           setActiveMembraneData((prev) => {
@@ -250,7 +250,7 @@ export const SimulationView: React.FC = () => {
     try {
       const response = await api.uploadSimulationCsv(uploadFile);
       setSimulationData(response);
-      setActiveMembraneData(null); // Extracellular recording has no intracellular trace
+      setActiveMembraneData(response.membrane_potentials ?? null);
       if (response.neuron_ids.length > 0) {
         setSelectedNeuronId(response.neuron_ids[0]);
       }
@@ -263,14 +263,14 @@ export const SimulationView: React.FC = () => {
   };
 
   // Download Sample CSV
-  const handleDownloadSample = async () => {
+  const handleDownloadSample = async (sampleType: 'spike' | 'voltage' = 'spike') => {
     try {
-      const csvText = await api.getSampleCsv();
+      const csvText = await api.getSampleCsv(sampleType);
       const blob = new Blob([csvText], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'sample_neural_spikes.csv';
+      a.download = sampleType === 'voltage' ? 'sample_neural_voltage.csv' : 'sample_neural_spikes.csv';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -933,10 +933,18 @@ export const SimulationView: React.FC = () => {
                   ref={fileInputRef}
                   type="file"
                   accept=".csv,.txt"
+                  aria-label="Upload Spike Train CSV"
                   style={{ display: 'none' }}
                   onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      setUploadFile(e.target.files[0]);
+                    const target = e.target as HTMLInputElement & { files?: FileList | File[] };
+                    const native = e.nativeEvent as unknown as { target?: { files?: File[] }; files?: File[] };
+                    const files = target.files?.length
+                      ? target.files
+                      : native?.target?.files?.length
+                      ? native.target.files
+                      : native?.files;
+                    if (files && files[0]) {
+                      setUploadFile(files[0] as File);
                     }
                   }}
                 />
@@ -953,26 +961,48 @@ export const SimulationView: React.FC = () => {
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#cbd5e1' }}>
-                    Supported CSV Format
+                    Supported CSV Formats
                   </span>
-                  <button
-                    onClick={handleDownloadSample}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '3px 8px',
-                      backgroundColor: '#1e293b',
-                      border: '1px solid #334155',
-                      borderRadius: '4px',
-                      fontSize: '0.7rem',
-                      color: '#38bdf8',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Download size={12} />
-                    Sample CSV
-                  </button>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      onClick={() => handleDownloadSample('spike')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '3px 8px',
+                        backgroundColor: '#1e293b',
+                        border: '1px solid #334155',
+                        borderRadius: '4px',
+                        fontSize: '0.7rem',
+                        color: '#38bdf8',
+                        cursor: 'pointer',
+                      }}
+                      title="Download sample spike event CSV (STATE A)"
+                    >
+                      <Download size={12} />
+                      Sample CSV
+                    </button>
+                    <button
+                      onClick={() => handleDownloadSample('voltage')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '3px 8px',
+                        backgroundColor: '#1e293b',
+                        border: '1px solid #334155',
+                        borderRadius: '4px',
+                        fontSize: '0.7rem',
+                        color: '#34d399',
+                        cursor: 'pointer',
+                      }}
+                      title="Download sample continuous membrane potential CSV (STATE B)"
+                    >
+                      <Download size={12} />
+                      Sample Voltage
+                    </button>
+                  </div>
                 </div>
                 <pre
                   style={{
@@ -986,11 +1016,15 @@ export const SimulationView: React.FC = () => {
                     lineHeight: '1.4',
                   }}
                 >
+                  # Format A: Spike Events (timestamps only){'\n'}
                   neuron_id,timestamp_ms{'\n'}
                   0,12.4{'\n'}
-                  0,48.2{'\n'}
                   1,25.1{'\n'}
-                  ...
+                  {'\n'}
+                  # Format B: Intracellular V(t) Dynamics:{'\n'}
+                  neuron_id,timestamp_ms,membrane_potential_mv{'\n'}
+                  0,0.0,-65.0{'\n'}
+                  0,1.0,-64.2{'\n'}
                 </pre>
               </div>
 
@@ -1051,7 +1085,7 @@ export const SimulationView: React.FC = () => {
               ) : (
                 <>
                   <Play size={18} />
-                  Run LIF Simulation
+                  {mode === 'custom' ? 'Run Custom Simulation' : 'Run LIF Simulation'}
                 </>
               )}
             </button>

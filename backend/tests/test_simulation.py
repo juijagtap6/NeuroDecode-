@@ -631,3 +631,131 @@ def test_all_quick_presets_produce_real_data_and_spikes():
         assert data["population_firing_rate"] is not None
         assert data["isi_statistics"] is not None
 
+
+def test_byod_download_sample_csv_and_upload_workflow():
+    """
+    Test 1 & 6: Download Sample CSV -> Take exact downloaded CSV -> Upload through BYOD.
+    Validates that:
+    1. GET /api/v1/simulation/sample-csv returns valid spike-only CSV.
+    2. Uploading that exact CSV is accepted with status 200.
+    3. Provenance is strictly 'user_uploaded'.
+    4. State A: membrane_potentials is None (Intracellular Membrane Potential Not Available).
+    5. No intracellular voltage data is fabricated.
+    """
+    # 1. Download sample CSV
+    download_res = client.get("/api/v1/simulation/sample-csv")
+    assert download_res.status_code == 200
+    assert "neuron_id,timestamp_ms" in download_res.text
+    downloaded_content = download_res.content
+
+    # 2. Upload exact same downloaded CSV
+    upload_res = client.post(
+        "/api/v1/simulation/upload",
+        files={"file": ("sample_neural_spikes.csv", io.BytesIO(downloaded_content), "text/csv")},
+    )
+    assert upload_res.status_code == 200
+    byod_data = upload_res.json()
+
+    assert byod_data["provenance"] == "user_uploaded"
+    assert byod_data["membrane_potentials"] is None
+    assert len(byod_data["neuron_ids"]) > 0
+    assert len(byod_data["spike_events"]) > 0
+    assert byod_data["summary"]["provenance"] == "user_uploaded"
+
+    # Verify /api/v1/simulation/trace/{neuron_id} does not fabricate data for spike-only BYOD
+    first_nid = byod_data["neuron_ids"][0]
+    trace_res = client.get(f"/api/v1/simulation/trace/{first_nid}")
+    assert trace_res.status_code == 404
+
+
+def test_byod_voltage_csv_workflow_and_trace_retrieval():
+    """
+    Test B: CSV with membrane potential measurements.
+    Validates that:
+    1. Download sample voltage CSV or custom CSV with membrane_potential_mv is parsed.
+    2. Validates membrane_potentials data structure with real uploaded values.
+    3. Mini Membrane trace data is returned and available on-demand.
+    4. Spike events are accurately detected at action potential threshold crossings.
+    """
+    # 1. Download sample voltage CSV
+    volt_sample_res = client.get("/api/v1/simulation/sample-csv?sample_type=voltage")
+    assert volt_sample_res.status_code == 200
+    assert "neuron_id,timestamp_ms,membrane_potential_mv" in volt_sample_res.text
+
+    # 2. Upload exact downloaded voltage CSV
+    upload_res = client.post(
+        "/api/v1/simulation/upload",
+        files={"file": ("sample_neural_voltage.csv", io.BytesIO(volt_sample_res.content), "text/csv")},
+    )
+    assert upload_res.status_code == 200
+    data = upload_res.json()
+
+    assert data["provenance"] == "user_uploaded"
+    assert data["membrane_potentials"] is not None
+    assert "traces" in data["membrane_potentials"]
+    assert "0" in data["membrane_potentials"]["traces"]
+    # Check that peak voltage reaches action potential level (+20 mV)
+    v0_trace = data["membrane_potentials"]["traces"]["0"]
+    assert max(v0_trace) >= 15.0
+
+    # 3. Verify on-demand trace retrieval for uploaded neuron
+    trace_res = client.get("/api/v1/simulation/trace/0")
+    assert trace_res.status_code == 200
+    trace_json = trace_res.json()
+    assert "0" in trace_json["traces"]
+    assert trace_json["traces"]["0"] == v0_trace
+
+
+def test_byod_custom_voltage_csv_schema():
+    """
+    Test custom small CSV schema matching prompt specifications:
+    neuron_id,timestamp_ms,membrane_potential_mv
+    """
+    csv_text = (
+        "neuron_id,timestamp_ms,membrane_potential_mv\n"
+        "1,0,-65.0\n"
+        "1,1,-64.2\n"
+        "1,2,-62.5\n"
+        "1,3,-58.0\n"
+        "1,4,-52.0\n"
+        "1,5,-49.5\n"
+        "1,6,-65.0\n"
+        "2,0,-65.0\n"
+        "2,1,-63.8\n"
+        "2,2,-60.5\n"
+        "2,3,-55.0\n"
+        "2,4,-50.5\n"
+        "2,5,-65.0\n"
+    )
+    res = client.post(
+        "/api/v1/simulation/upload",
+        files={"file": ("custom_voltage.csv", io.BytesIO(csv_text.encode("utf-8")), "text/csv")},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["provenance"] == "user_uploaded"
+    assert data["membrane_potentials"] is not None
+    assert "1" in data["membrane_potentials"]["traces"]
+    assert "2" in data["membrane_potentials"]["traces"]
+    assert data["membrane_potentials"]["traces"]["1"] == [-65.0, -64.2, -62.5, -58.0, -52.0, -49.5, -65.0]
+    assert data["membrane_potentials"]["traces"]["2"] == [-65.0, -63.8, -60.5, -55.0, -50.5, -65.0]
+    # Spikes detected from threshold crossings (-50 mV)
+    assert len(data["spike_events"]) >= 1
+
+
+def test_byod_invalid_voltage_csv():
+    """Test that non-numeric membrane potential values in CSV are rejected with helpful row error."""
+    bad_volt_csv = (
+        "neuron_id,timestamp_ms,membrane_potential_mv\n"
+        "1,0.0,-65.0\n"
+        "1,1.0,not_a_voltage\n"
+    )
+    res = client.post(
+        "/api/v1/simulation/upload",
+        files={"file": ("bad_volt.csv", io.BytesIO(bad_volt_csv.encode("utf-8")), "text/csv")},
+    )
+    assert res.status_code == 400
+    assert "Row 3" in res.json()["detail"]
+    assert "Membrane potential values must be valid numbers" in res.json()["detail"]
+
+
